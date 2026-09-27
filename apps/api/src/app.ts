@@ -12,6 +12,7 @@ import { registerErrorHandling } from './plugins/errors';
 import { authRoutes } from './modules/auth/routes';
 import { companyRoutes } from './modules/company/routes';
 import { platformRoutes } from './modules/platform/routes';
+import { oauthRoutes } from './modules/oauth/routes';
 import { webhookRoutes } from './modules/webhooks/routes';
 
 const REQUEST_ID_PATTERN = /^[a-zA-Z0-9-]{8,64}$/;
@@ -87,6 +88,7 @@ export async function buildApp(container: AppContainer): Promise<FastifyInstance
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(platformRoutes, { prefix: '/api/platform' });
   await app.register(companyRoutes, { prefix: '/api/app' });
+  await app.register(oauthRoutes, { prefix: '/api/integrations' });
   await app.register(webhookRoutes, { prefix: '/webhooks' });
 
   return app;

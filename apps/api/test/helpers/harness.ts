@@ -11,7 +11,7 @@ import { truncateAllTables } from '@botsaas/database/testing';
 import { MemoryObjectStorage, MockSpeechToText } from '@botsaas/integrations';
 import type { BusinessTemplateKey } from '@botsaas/shared';
 import { MockMessagingProvider } from '@botsaas/whatsapp';
-import type { FastifyInstance, InjectOptions } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import pino from 'pino';
 import { buildApp } from '../../src/app';
 import { createContainer, type AppContainer } from '../../src/container';
@@ -112,12 +112,12 @@ export async function addMember(companyId: string, email: string, role: CompanyR
 
 export interface TestClient {
   cookie: string;
-  request(options: InjectOptions): ReturnType<FastifyInstance['inject']>;
-  get(url: string): ReturnType<FastifyInstance['inject']>;
-  post(url: string, payload?: unknown): ReturnType<FastifyInstance['inject']>;
-  patch(url: string, payload?: unknown): ReturnType<FastifyInstance['inject']>;
-  put(url: string, payload?: unknown): ReturnType<FastifyInstance['inject']>;
-  delete(url: string): ReturnType<FastifyInstance['inject']>;
+  request(options: InjectOptions): Promise<LightMyRequestResponse>;
+  get(url: string): Promise<LightMyRequestResponse>;
+  post(url: string, payload?: unknown): Promise<LightMyRequestResponse>;
+  patch(url: string, payload?: unknown): Promise<LightMyRequestResponse>;
+  put(url: string, payload?: unknown): Promise<LightMyRequestResponse>;
+  delete(url: string): Promise<LightMyRequestResponse>;
 }
 
 export async function login(

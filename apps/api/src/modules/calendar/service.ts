@@ -1,0 +1,318 @@
+import type { AppointmentStatus, Prisma } from '@botsaas/database';
+import {
+  GoogleCalendarProvider,
+  type CalendarProvider,
+  type GoogleTokens,
+} from '@botsaas/integrations';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+  type WeeklySchedule,
+} from '@botsaas/shared';
+import { addMinutes } from 'date-fns';
+import type { CompanyScope } from '../../context';
+import { audit } from '../../lib/audit';
+import { getOwnCompany } from '../../lib/company-record';
+import { emitDomainEvent } from '../../lib/events';
+import { computeAvailableSlots, type Interval } from './availability';
+
+export const DEFAULT_DURATION_MINUTES = 30;
+const ACTIVE_STATUSES: AppointmentStatus[] = ['PENDING', 'CONFIRMED'];
+
+const appointmentInclude = {
+  contact: { select: { id: true, name: true, phone: true } },
+  service: { select: { id: true, name: true, durationMinutes: true } },
+} satisfies Prisma.AppointmentInclude;
+
+/** Provider externo conectado (Google) ou null quando só a agenda interna está ativa. */
+export async function getCalendarProvider(
+  scope: CompanyScope,
+): Promise<{ provider: CalendarProvider; integrationId: string } | null> {
+  const integration = await scope.db.integration.findFirst({
+    where: { provider: 'GOOGLE_CALENDAR', status: 'CONNECTED' },
+  });
+  const { env, secrets } = scope.container;
+  if (
+    !integration?.credentialsEncrypted ||
+    !secrets ||
+    !env.GOOGLE_CLIENT_ID ||
+    !env.GOOGLE_CLIENT_SECRET ||
+    !env.GOOGLE_REDIRECT_URI
+  ) {
+    return null;
+  }
+  const tokens = JSON.parse(secrets.decrypt(integration.credentialsEncrypted)) as GoogleTokens;
+  const config = (integration.config ?? {}) as { calendarId?: string };
+  const provider = new GoogleCalendarProvider({
+    oauth: {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      redirectUri: env.GOOGLE_REDIRECT_URI,
+    },
+    tokens,
+    calendarId: config.calendarId,
+    onTokensRefreshed: async (refreshed) => {
+      await scope.db.integration.update({
+        where: { id: integration.id },
+        data: { credentialsEncrypted: secrets.encrypt(JSON.stringify(refreshed)) },
+      });
+    },
+  });
+  return { provider, integrationId: integration.id };
+}
+
+async function busyIntervals(
+  scope: CompanyScope,
+  range: Interval,
+  timezone: string,
+  excludeId?: string,
+): Promise<Interval[]> {
+  const appointments = await scope.db.appointment.findMany({
+    where: {
+      status: { in: ACTIVE_STATUSES },
+      startAt: { lt: range.end },
+      endAt: { gt: range.start },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { startAt: true, endAt: true },
+  });
+  const busy: Interval[] = appointments.map((item) => ({ start: item.startAt, end: item.endAt }));
+  const external = await getCalendarProvider(scope);
+  if (external) {
+    // Compromissos do calendário externo também bloqueiam a agenda (inclui eventos espelhados por nós).
+    busy.push(...(await external.provider.getAvailability({ ...range, timezone })));
+  }
+  return busy;
+}
+
+async function serviceDuration(
+  scope: CompanyScope,
+  serviceId?: string | null,
+): Promise<{ duration: number; serviceId: string | null }> {
+  if (!serviceId) return { duration: DEFAULT_DURATION_MINUTES, serviceId: null };
+  const service = await scope.db.service.findUnique({ where: { id: serviceId } });
+  if (!service || !service.isActive) throw new NotFoundError('Serviço não encontrado.');
+  return { duration: service.durationMinutes ?? DEFAULT_DURATION_MINUTES, serviceId: service.id };
+}
+
+export async function getAvailableSlots(
+  scope: CompanyScope,
+  input: { serviceId?: string | null; date: string; days?: number; maxSlots?: number },
+) {
+  const company = await getOwnCompany(scope);
+  const schedule = (company.businessHours ?? []) as WeeklySchedule;
+  if (schedule.length === 0)
+    throw new ValidationError('A empresa ainda não configurou o horário de funcionamento.');
+  const { duration } = await serviceDuration(scope, input.serviceId);
+  const days = Math.min(Math.max(input.days ?? 1, 1), 14);
+  const rangeStart = new Date(`${input.date}T00:00:00Z`);
+  const range = {
+    start: addMinutes(rangeStart, -24 * 60),
+    end: addMinutes(rangeStart, (days + 1) * 24 * 60),
+  };
+  const [holidays, busy] = await Promise.all([
+    scope.db.holiday.findMany(),
+    busyIntervals(scope, range, company.timezone),
+  ]);
+  const slots = computeAvailableSlots({
+    fromDate: input.date,
+    days,
+    durationMinutes: duration,
+    timezone: company.timezone,
+    schedule,
+    holidays,
+    busy,
+    now: new Date(),
+    maxSlots: input.maxSlots ?? 40,
+  });
+  return { timezone: company.timezone, durationMinutes: duration, slots };
+}
+
+async function assertSlotFree(
+  scope: CompanyScope,
+  interval: Interval,
+  timezone: string,
+  excludeId?: string,
+) {
+  const busy = await busyIntervals(scope, interval, timezone, excludeId);
+  if (busy.some((item) => item.start < interval.end && interval.start < item.end)) {
+    throw new ConflictError('Horário indisponível. Escolha outro horário.');
+  }
+}
+
+export async function listAppointments(
+  scope: CompanyScope,
+  query: { from: Date; to: Date; status?: AppointmentStatus; contactId?: string },
+) {
+  return scope.db.appointment.findMany({
+    where: {
+      startAt: { gte: query.from, lt: query.to },
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.contactId ? { contactId: query.contactId } : {}),
+    },
+    include: appointmentInclude,
+    orderBy: { startAt: 'asc' },
+    take: 500,
+  });
+}
+
+export interface CreateAppointmentInput {
+  contactId: string;
+  serviceId?: string | null;
+  startAt: Date;
+  endAt?: Date | null;
+  notes?: string | null;
+  status?: AppointmentStatus;
+  enforceAvailability?: boolean;
+}
+
+export async function createAppointment(scope: CompanyScope, input: CreateAppointmentInput) {
+  const company = await getOwnCompany(scope);
+  const contact = await scope.db.contact.findUnique({
+    where: { id: input.contactId },
+    select: { id: true },
+  });
+  if (!contact) throw new NotFoundError('Contato não encontrado.');
+  const { duration, serviceId } = await serviceDuration(scope, input.serviceId);
+  const endAt = input.endAt ?? addMinutes(input.startAt, duration);
+  if (endAt <= input.startAt)
+    throw new ValidationError('Horário final deve ser depois do inicial.');
+  if (input.enforceAvailability !== false)
+    await assertSlotFree(scope, { start: input.startAt, end: endAt }, company.timezone);
+
+  const appointment = await scope.db.appointment.create({
+    data: {
+      companyId: scope.companyId,
+      contactId: contact.id,
+      serviceId,
+      startAt: input.startAt,
+      endAt,
+      timezone: company.timezone,
+      status: input.status ?? 'CONFIRMED',
+      notes: input.notes ?? null,
+      createdByType: scope.actor.type === 'PLATFORM_ADMIN' ? 'USER' : scope.actor.type,
+      createdById: scope.actor.userId ?? null,
+    },
+    include: appointmentInclude,
+  });
+  await enqueueCalendarSync(scope, appointment.id, 'create');
+  await emitDomainEvent(scope, 'appointment.created', {
+    appointmentId: appointment.id,
+    contactId: contact.id,
+    startAt: appointment.startAt.toISOString(),
+  });
+  return appointment;
+}
+
+export async function rescheduleAppointment(scope: CompanyScope, id: string, startAt: Date) {
+  const current = await scope.db.appointment.findUnique({ where: { id } });
+  if (!current || !ACTIVE_STATUSES.includes(current.status))
+    throw new NotFoundError('Agendamento não encontrado ou já encerrado.');
+  const duration = current.endAt.getTime() - current.startAt.getTime();
+  const endAt = new Date(startAt.getTime() + duration);
+  await assertSlotFree(scope, { start: startAt, end: endAt }, current.timezone, current.id);
+  const appointment = await scope.db.appointment.update({
+    where: { id },
+    data: { startAt, endAt, reminderSentAt: null },
+    include: appointmentInclude,
+  });
+  await enqueueCalendarSync(scope, id, 'update');
+  await audit(scope, {
+    action: 'appointment.rescheduled',
+    resourceType: 'Appointment',
+    resourceId: id,
+    metadata: { from: current.startAt, to: startAt },
+  });
+  return appointment;
+}
+
+export async function cancelAppointment(scope: CompanyScope, id: string, reason?: string | null) {
+  const current = await scope.db.appointment.findUnique({ where: { id } });
+  if (!current) throw new NotFoundError('Agendamento não encontrado.');
+  if (current.status === 'CANCELLED')
+    return scope.db.appointment.findUniqueOrThrow({ where: { id }, include: appointmentInclude });
+  const appointment = await scope.db.appointment.update({
+    where: { id },
+    data: { status: 'CANCELLED', cancelledReason: reason ?? null },
+    include: appointmentInclude,
+  });
+  await enqueueCalendarSync(scope, id, 'delete');
+  await emitDomainEvent(scope, 'appointment.cancelled', {
+    appointmentId: id,
+    contactId: current.contactId,
+    reason: reason ?? null,
+  });
+  return appointment;
+}
+
+export async function updateAppointmentStatus(
+  scope: CompanyScope,
+  id: string,
+  status: AppointmentStatus,
+) {
+  if (status === 'CANCELLED') return cancelAppointment(scope, id);
+  const exists = await scope.db.appointment.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) throw new NotFoundError('Agendamento não encontrado.');
+  return scope.db.appointment.update({
+    where: { id },
+    data: { status },
+    include: appointmentInclude,
+  });
+}
+
+async function enqueueCalendarSync(
+  scope: CompanyScope,
+  appointmentId: string,
+  action: 'create' | 'update' | 'delete',
+) {
+  const integration = await scope.db.integration.findFirst({
+    where: { provider: 'GOOGLE_CALENDAR', status: 'CONNECTED' },
+    select: { id: true },
+  });
+  if (!integration) return;
+  await scope.container.queue.enqueue(
+    'calendar.sync',
+    { companyId: scope.companyId, appointmentId, action },
+    { jobId: `cal-${appointmentId}-${action}-${Date.now()}` },
+  );
+}
+
+/** Job `calendar.sync`: espelha o agendamento no calendário externo. */
+export async function processCalendarSync(
+  scope: CompanyScope,
+  appointmentId: string,
+  action: 'create' | 'update' | 'delete',
+) {
+  const external = await getCalendarProvider(scope);
+  if (!external) return;
+  const appointment = await scope.db.appointment.findUnique({
+    where: { id: appointmentId },
+    include: appointmentInclude,
+  });
+  if (!appointment) return;
+  const event = {
+    title: `${appointment.service?.name ?? 'Atendimento'} — ${appointment.contact.name ?? appointment.contact.phone}`,
+    description: appointment.notes ?? undefined,
+    start: appointment.startAt,
+    end: appointment.endAt,
+    timezone: appointment.timezone,
+  };
+  if (action === 'delete' || appointment.status === 'CANCELLED') {
+    if (appointment.externalId) await external.provider.deleteEvent(appointment.externalId);
+    return;
+  }
+  if (appointment.externalId) {
+    await external.provider.updateEvent(appointment.externalId, event);
+  } else {
+    const created = await external.provider.createEvent(event);
+    await scope.db.appointment.update({
+      where: { id: appointment.id },
+      data: { externalId: created.externalId, integrationId: external.integrationId },
+    });
+  }
+  await scope.db.integration.update({
+    where: { id: external.integrationId },
+    data: { lastSyncAt: new Date(), lastError: null },
+  });
+}

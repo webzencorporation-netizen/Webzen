@@ -176,18 +176,21 @@ export class AgentEngine {
               input.meta,
               input.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
             );
-            const record: ToolCallRecord = {
-              name: call.name,
-              durationMs: Date.now() - started,
-              ok: result.ok,
-              ...(result.ok ? {} : { errorCode: result.code }),
-            };
-            toolCalls.push(record);
-            if (result.effects?.handoff) effects.handoff = result.effects.handoff;
-            input.onToolCall?.({ ...record, input: call.input, result });
-            return { call, result };
+            return { call, result, durationMs: Date.now() - started };
           }),
         );
+        // Registros na ordem pedida pelo modelo (determinístico), não na ordem de conclusão.
+        for (const { call, result, durationMs } of results) {
+          const record: ToolCallRecord = {
+            name: call.name,
+            durationMs,
+            ok: result.ok,
+            ...(result.ok ? {} : { errorCode: result.code }),
+          };
+          toolCalls.push(record);
+          if (result.effects?.handoff) effects.handoff = result.effects.handoff;
+          input.onToolCall?.({ ...record, input: call.input, result });
+        }
         messages.push({
           role: 'user',
           content: results.map(({ call, result }) => ({
