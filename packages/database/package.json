@@ -1,0 +1,36 @@
+{
+  "name": "@botsaas/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./seed": "./src/seed/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:reset": "prisma migrate reset --force",
+    "seed": "tsx src/seed/run.ts",
+    "studio": "prisma studio",
+    "postinstall": "prisma generate",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@botsaas/config": "workspace:*",
+    "@botsaas/shared": "workspace:*",
+    "@node-rs/argon2": "^2.2.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "dotenv": "^18.0.4",
+    "prisma": "7.10.0",
+    "vitest": "^5.0.2"
+  }
+}

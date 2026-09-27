@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Pacotes com scripts de instalação permitidos (pnpm bloqueia os demais por segurança).
+allowBuilds:
+  "@prisma/engines": true
+  prisma: true
+  esbuild: true
+  sharp: true
+  msgpackr-extract: true
+  redis-memory-server: true
+  embedded-postgres: true
+  "@embedded-postgres/linux-x64": true
+  unrs-resolver: true

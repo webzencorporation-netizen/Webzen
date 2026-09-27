@@ -1,0 +1,1281 @@
+// Schema da plataforma multiempresa.
+//
+// REGRA DE OURO: todo modelo com dados de uma empresa possui `companyId` e está listado em
+// `TENANT_SCOPED_MODELS` (src/tenant.ts). O client com escopo injeta o filtro automaticamente.
+// Todos os DateTime são `timestamptz`.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums (espelhados em packages/shared/src/enums.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PlatformRole {
+  PLATFORM_OWNER
+  PLATFORM_ADMIN
+}
+
+enum CompanyRole {
+  COMPANY_OWNER
+  COMPANY_ADMIN
+  MANAGER
+  ATTENDANT
+  VIEWER
+}
+
+enum CompanyStatus {
+  ONBOARDING
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum BusinessTemplateKey {
+  GENERAL
+  CLINIC
+  BARBERSHOP_BEAUTY
+  RESTAURANT
+  RETAIL_STORE
+  REAL_ESTATE
+  LOCAL_SERVICE
+}
+
+enum ConversationMode {
+  AI
+  HUMAN
+  PAUSED
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_HUMAN
+  CLOSED
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  TEST
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageSender {
+  CONTACT
+  AI
+  AGENT
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACTS
+  INTERACTIVE
+  BUTTON
+  REACTION
+  TEMPLATE
+  SYSTEM
+  UNSUPPORTED
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MediaProcessingStatus {
+  PENDING
+  DOWNLOADED
+  PROCESSED
+  FAILED
+  SKIPPED
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ActorType {
+  USER
+  PLATFORM_ADMIN
+  AI
+  CONTACT
+  SYSTEM
+}
+
+enum AiTone {
+  FORMAL
+  FRIENDLY
+  CASUAL
+  OBJECTIVE
+}
+
+enum AiResponseLength {
+  SHORT
+  MEDIUM
+  DETAILED
+}
+
+enum AiEmojiUsage {
+  NEVER
+  MODERATE
+  FREE
+}
+
+enum AiFallbackBehavior {
+  HANDOFF_TO_HUMAN
+  SEND_FALLBACK_MESSAGE
+  SILENT
+}
+
+enum AgentRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum AgentRunTrigger {
+  INBOUND_MESSAGE
+  TEST_CHAT
+  MANUAL
+  SUMMARY
+}
+
+enum KnowledgeEntryType {
+  TEXT
+  FAQ
+  POLICY
+  COMPANY_INFO
+  DOCUMENT
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum IntegrationProvider {
+  WHATSAPP_CLOUD
+  GOOGLE_CALENDAR
+}
+
+enum IntegrationStatus {
+  PENDING
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum NotificationType {
+  HANDOFF_REQUESTED
+  INTEGRATION_DISCONNECTED
+  USAGE_WARNING
+  USAGE_LIMIT_REACHED
+  AGENT_FAILED
+  MESSAGE_FAILED
+  NEW_LEAD
+  SYSTEM
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum UsageKind {
+  AI_CALL
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  STORAGE_BYTES
+}
+
+enum UsageMetric {
+  AI_CALLS_PER_MONTH
+  MESSAGES_PER_MONTH
+  AI_COST_USD_PER_MONTH
+  USERS
+  WHATSAPP_NUMBERS
+  STORAGE_MB
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum FeatureFlagKey {
+  AI_AGENT
+  CRM
+  CALENDAR
+  AUTOMATIONS
+  ADVANCED_ANALYTICS
+  KNOWLEDGE_UPLOADS
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  SELECT
+  BOOLEAN
+  DATE
+}
+
+enum CustomFieldTarget {
+  CONTACT
+  LEAD
+}
+
+enum ErrorSource {
+  API
+  WORKER
+  WEBHOOK
+  AI
+  WHATSAPP
+  INTEGRATION
+}
+
+enum HandoffRequester {
+  AI
+  AGENT
+  CONTACT
+  SYSTEM
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identidade e empresas
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  email              String        @unique
+  name               String
+  passwordHash       String
+  platformRole       PlatformRole?
+  isActive           Boolean       @default(true)
+  mustChangePassword Boolean       @default(false)
+  lastLoginAt        DateTime?     @db.Timestamptz(6)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(6)
+
+  memberships       CompanyMember[]
+  sessions          Session[]
+  assignedContacts  Contact[]          @relation("ContactAssignee")
+  assignedConvs     Conversation[]     @relation("ConversationAssignee")
+  assignedLeads     Lead[]             @relation("LeadAssignee")
+  sentMessages      Message[]          @relation("MessageSenderUser")
+  notes             ContactNote[]
+  notificationReads NotificationRead[]
+}
+
+model Session {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  tokenHash        String    @unique
+  userId           String    @db.Uuid
+  activeCompanyId  String?   @db.Uuid
+  /// Modo suporte: administrador da plataforma operando dentro de uma empresa (auditado).
+  supportCompanyId String?   @db.Uuid
+  supportExpiresAt DateTime? @db.Timestamptz(6)
+  ip               String?
+  userAgent        String?
+  expiresAt        DateTime  @db.Timestamptz(6)
+  lastSeenAt       DateTime  @default(now()) @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Company {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  name               String
+  slug               String              @unique
+  templateKey        BusinessTemplateKey @default(GENERAL)
+  status             CompanyStatus       @default(ONBOARDING)
+  segment            String?
+  legalName          String?
+  document           String?
+  phone              String?
+  email              String?
+  website            String?
+  description        String?
+  /// { street, number, complement, district, city, state, zip, country, mapsUrl }
+  address            Json?
+  timezone           String              @default("America/Sao_Paulo")
+  locale             String              @default("pt-BR")
+  currency           String              @default("BRL")
+  /// Horário semanal: [{ weekday: 0-6, open: "08:00", close: "18:00", breaks: [{start,end}] }]
+  businessHours      Json?
+  /// Etapas do onboarding concluídas (chaves) e etapa atual.
+  onboardingState    Json?
+  onboardingDoneAt   DateTime?           @db.Timestamptz(6)
+  /// Retenção de dados definida pela empresa (LGPD). Nulo = sem expurgo automático.
+  messageRetentionDays Int?
+  activatedAt        DateTime?           @db.Timestamptz(6)
+  suspendedReason    String?
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+
+  members            CompanyMember[]
+  holidays           Holiday[]
+  aiConfiguration    AIConfiguration?
+  aiTools            AIToolConfiguration[]
+  whatsappAccounts   WhatsAppAccount[]
+  whatsappTemplates  WhatsAppTemplate[]
+  contacts           Contact[]
+  tags               Tag[]
+  contactTags        ContactTag[]
+  contactNotes       ContactNote[]
+  contactMemories    ContactMemory[]
+  customFields       CustomFieldDefinition[]
+  leadStages         LeadStage[]
+  leads              Lead[]
+  conversations      Conversation[]
+  conversationSums   ConversationSummary[]
+  handoffs           Handoff[]
+  messages           Message[]
+  mediaAssets        MediaAsset[]
+  services           Service[]
+  products           Product[]
+  knowledgeDocuments KnowledgeDocument[]
+  knowledgeEntries   KnowledgeEntry[]
+  appointments       Appointment[]
+  integrations       Integration[]
+  agentRuns          AgentRun[]
+  usageRecords       UsageRecord[]
+  usageLimits        UsageLimit[]
+  subscription       Subscription?
+  featureFlags       CompanyFeatureFlag[]
+  automations        Automation[]
+  automationRuns     AutomationRun[]
+  domainEvents       DomainEvent[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  errorLogs          ErrorLog[]
+  webhookEvents      WebhookEvent[]
+}
+
+model CompanyMember {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  companyId   String      @db.Uuid
+  userId      String      @db.Uuid
+  role        CompanyRole
+  isActive    Boolean     @default(true)
+  invitedById String?     @db.Uuid
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([userId])
+}
+
+model Holiday {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  /// Data local da empresa (YYYY-MM-DD).
+  date      String
+  name      String
+  closed    Boolean  @default(true)
+  /// Quando não fechado: horário especial.
+  open      String?
+  close     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, date])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agente de IA
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AIConfiguration {
+  id                     String             @id @default(uuid(7)) @db.Uuid
+  companyId              String             @unique @db.Uuid
+  enabled                Boolean            @default(false)
+  agentName              String             @default("Assistente")
+  personality            String?
+  tone                   AiTone             @default(FRIENDLY)
+  responseLength         AiResponseLength   @default(SHORT)
+  emojiUsage             AiEmojiUsage       @default(MODERATE)
+  additionalInstructions String?
+  /// Regras específicas da empresa (uma por item).
+  customRules            String[]           @default([])
+  greetingMessage        String?
+  outOfHoursMessage      String?
+  handoffMessage         String?
+  fallbackMessage        String?
+  messageBufferSeconds   Int                @default(4)
+  model                  String?
+  maxOutputTokens        Int                @default(1024)
+  effort                 String             @default("medium")
+  maxToolIterations      Int                @default(6)
+  historyMessageLimit    Int                @default(20)
+  summaryThreshold       Int                @default(40)
+  fallbackBehavior       AiFallbackBehavior @default(HANDOFF_TO_HUMAN)
+  dailyBudgetUsd         Decimal?           @db.Decimal(12, 4)
+  monthlyBudgetUsd       Decimal?           @db.Decimal(12, 4)
+  /// Responder fora do horário de funcionamento?
+  respondOutsideHours    Boolean            @default(true)
+  version                Int                @default(1)
+  updatedById            String?            @db.Uuid
+  createdAt              DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime           @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model AIToolConfiguration {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  toolName  String
+  enabled   Boolean  @default(true)
+  /// Configuração específica da tool (não secreta).
+  config    Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, toolName])
+}
+
+model AgentRun {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  companyId        String          @db.Uuid
+  conversationId   String?         @db.Uuid
+  trigger          AgentRunTrigger
+  status           AgentRunStatus  @default(RUNNING)
+  model            String
+  provider         String
+  inputTokens      Int             @default(0)
+  outputTokens     Int             @default(0)
+  cacheReadTokens  Int             @default(0)
+  cacheWriteTokens Int             @default(0)
+  iterations       Int             @default(0)
+  /// [{ name, durationMs, ok, errorCode? }] — sem dados sensíveis dos argumentos.
+  toolCalls        Json?
+  /// [{ entryId, title, score }]
+  knowledgeHits    Json?
+  stopReason       String?
+  durationMs       Int?
+  estimatedCostUsd Decimal         @default(0) @db.Decimal(12, 6)
+  errorCode        String?
+  errorMessage     String?
+  inputMessageIds  String[]        @default([])
+  startedAt        DateTime        @default(now()) @db.Timestamptz(6)
+  finishedAt       DateTime?       @db.Timestamptz(6)
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  messages     Message[]
+
+  @@index([companyId, startedAt])
+  @@index([companyId, status])
+  @@index([conversationId])
+}
+
+model ModelPricing {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  model                String   @unique
+  displayName          String?
+  inputUsdPerMTok      Decimal  @db.Decimal(10, 4)
+  outputUsdPerMTok     Decimal  @db.Decimal(10, 4)
+  cacheWriteUsdPerMTok Decimal  @db.Decimal(10, 4)
+  cacheReadUsdPerMTok  Decimal  @db.Decimal(10, 4)
+  isActive             Boolean  @default(true)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp
+// ─────────────────────────────────────────────────────────────────────────────
+
+model WhatsAppAccount {
+  id                   String            @id @default(uuid(7)) @db.Uuid
+  companyId            String            @db.Uuid
+  /// ID do número na Cloud API — chave usada para identificar a empresa no webhook.
+  phoneNumberId        String            @unique
+  wabaId               String?
+  displayPhoneNumber   String?
+  verifiedName         String?
+  /// Token de acesso criptografado (AES-256-GCM). Nunca enviado ao navegador.
+  accessTokenEncrypted String?
+  status               IntegrationStatus @default(PENDING)
+  qualityRating        String?
+  isDefault            Boolean           @default(true)
+  lastError            String?
+  lastWebhookAt        DateTime?         @db.Timestamptz(6)
+  connectedAt          DateTime?         @db.Timestamptz(6)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(6)
+
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  templates     WhatsAppTemplate[]
+
+  @@index([companyId])
+}
+
+model WhatsAppTemplate {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  companyId         String   @db.Uuid
+  whatsappAccountId String   @db.Uuid
+  name              String
+  language          String
+  category          String
+  status            String
+  /// Componentes do template (header/body/footer/buttons) conforme a Cloud API.
+  components        Json?
+  externalId        String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  account WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name, language])
+}
+
+model WebhookEvent {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  provider    String
+  /// Chave de deduplicação: message id (wamid) ou `${wamid}:${status}` para status.
+  dedupeKey   String
+  eventType   String
+  companyId   String?            @db.Uuid
+  payload     Json
+  status      WebhookEventStatus @default(RECEIVED)
+  attempts    Int                @default(0)
+  error       String?
+  receivedAt  DateTime           @default(now()) @db.Timestamptz(6)
+  processedAt DateTime?          @db.Timestamptz(6)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, dedupeKey])
+  @@index([companyId, receivedAt])
+  @@index([status, receivedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contatos e CRM
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Contact {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  companyId         String    @db.Uuid
+  name              String?
+  /// Telefone em E.164 sem "+" (ex.: 5511999999999).
+  phone             String
+  waId              String?
+  email             String?
+  source            String?
+  status            String?
+  assigneeId        String?   @db.Uuid
+  customFields      Json?
+  lastInteractionAt DateTime? @db.Timestamptz(6)
+  nextActionAt      DateTime? @db.Timestamptz(6)
+  nextActionNote    String?
+  optedOut          Boolean   @default(false)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignee      User?           @relation("ContactAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  tags          ContactTag[]
+  notes         ContactNote[]
+  memories      ContactMemory[]
+  conversations Conversation[]
+  leads         Lead[]
+  appointments  Appointment[]
+
+  @@unique([companyId, phone])
+  @@index([companyId, createdAt])
+  @@index([companyId, lastInteractionAt])
+  @@index([companyId, name])
+}
+
+model Tag {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  name      String
+  color     String   @default("#64748b")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  company  Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contacts ContactTag[]
+
+  @@unique([companyId, name])
+}
+
+model ContactTag {
+  companyId String   @db.Uuid
+  contactId String   @db.Uuid
+  tagId     String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@index([companyId, tagId])
+}
+
+model ContactNote {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  companyId  String    @db.Uuid
+  contactId  String    @db.Uuid
+  authorId   String?   @db.Uuid
+  authorType ActorType @default(USER)
+  body       String
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, contactId, createdAt])
+}
+
+/// Memória persistente sobre o contato (diferente do histórico de mensagens).
+model ContactMemory {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  companyId String    @db.Uuid
+  contactId String    @db.Uuid
+  key       String
+  value     String
+  source    ActorType @default(AI)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, key])
+  @@index([companyId, contactId])
+}
+
+model CustomFieldDefinition {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  companyId       String            @db.Uuid
+  target          CustomFieldTarget
+  key             String
+  label           String
+  type            CustomFieldType   @default(TEXT)
+  options         String[]          @default([])
+  /// O agente deve tentar coletar este campo naturalmente durante a conversa.
+  collectByAgent  Boolean           @default(false)
+  agentHint       String?
+  position        Int               @default(0)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, target, key])
+}
+
+model LeadStage {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @db.Uuid
+  key       String
+  name      String
+  color     String   @default("#64748b")
+  position  Int
+  isWon     Boolean  @default(false)
+  isLost    Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leads   Lead[]
+
+  @@unique([companyId, key])
+  @@index([companyId, position])
+}
+
+model Lead {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  companyId     String    @db.Uuid
+  contactId     String    @db.Uuid
+  stageId       String    @db.Uuid
+  title         String?
+  valueCents    Int?
+  assigneeId    String?   @db.Uuid
+  /// Campos de qualificação coletados (chaves de CustomFieldDefinition target=LEAD).
+  qualification Json?
+  source        String?
+  position      Float     @default(0)
+  closedAt      DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage    LeadStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  assignee User?     @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, stageId, position])
+  @@index([companyId, createdAt])
+  @@index([contactId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversas e mensagens
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  companyId          String              @db.Uuid
+  contactId          String              @db.Uuid
+  whatsappAccountId  String?             @db.Uuid
+  channel            ConversationChannel @default(WHATSAPP)
+  mode               ConversationMode    @default(AI)
+  status             ConversationStatus  @default(OPEN)
+  assigneeId         String?             @db.Uuid
+  unreadCount        Int                 @default(0)
+  lastMessageAt      DateTime?           @db.Timestamptz(6)
+  lastMessagePreview String?
+  /// Última mensagem do cliente — base da janela de atendimento de 24h.
+  lastInboundAt      DateTime?           @db.Timestamptz(6)
+  firstResponseAt    DateTime?           @db.Timestamptz(6)
+  aiFailureCount     Int                 @default(0)
+  needsAttention     Boolean             @default(false)
+  attentionReason    String?
+  closedAt           DateTime?           @db.Timestamptz(6)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact         Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  whatsappAccount WhatsAppAccount?     @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  assignee        User?                @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  messages        Message[]
+  summary         ConversationSummary?
+  handoffs        Handoff[]
+  agentRuns       AgentRun[]
+
+  @@index([companyId, lastMessageAt])
+  @@index([companyId, mode])
+  @@index([companyId, status])
+  @@index([companyId, contactId])
+  @@index([companyId, assigneeId])
+}
+
+model Message {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  companyId         String           @db.Uuid
+  conversationId    String           @db.Uuid
+  direction         MessageDirection
+  sender            MessageSender
+  senderUserId      String?          @db.Uuid
+  type              MessageType      @default(TEXT)
+  text              String?
+  /// Dados estruturados por tipo (localização, contatos, interativo, template...).
+  payload           Json?
+  /// ID da mensagem no WhatsApp (wamid) — deduplicação.
+  externalId        String?
+  replyToExternalId String?
+  status            MessageStatus    @default(RECEIVED)
+  errorCode         String?
+  errorMessage      String?
+  agentRunId        String?          @db.Uuid
+  /// Mensagens de entrada: quando o agente as incluiu em uma execução (buffer).
+  agentHandledAt    DateTime?        @db.Timestamptz(6)
+  sentAt            DateTime?        @db.Timestamptz(6)
+  deliveredAt       DateTime?        @db.Timestamptz(6)
+  readAt            DateTime?        @db.Timestamptz(6)
+  failedAt          DateTime?        @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser   User?        @relation("MessageSenderUser", fields: [senderUserId], references: [id], onDelete: SetNull)
+  agentRun     AgentRun?    @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  media        MediaAsset[]
+
+  @@unique([companyId, externalId])
+  @@index([conversationId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([companyId, direction, createdAt])
+}
+
+model MediaAsset {
+  id               String                @id @default(uuid(7)) @db.Uuid
+  companyId        String                @db.Uuid
+  messageId        String?               @db.Uuid
+  kind             MessageType
+  mimeType         String?
+  sizeBytes        Int?
+  sha256           String?
+  durationSeconds  Float?
+  fileName         String?
+  caption          String?
+  /// ID da mídia na Cloud API (URL de download é temporária — por isso copiamos para o storage).
+  externalMediaId  String?
+  storageKey       String?
+  transcription    String?
+  description      String?
+  processingStatus MediaProcessingStatus @default(PENDING)
+  processingError  String?
+  createdAt        DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @db.Timestamptz(6)
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([messageId])
+}
+
+model ConversationSummary {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  companyId       String   @db.Uuid
+  conversationId  String   @unique @db.Uuid
+  summary         String
+  /// Mensagens até este instante estão cobertas pelo resumo.
+  coveredUntil    DateTime @db.Timestamptz(6)
+  messagesCovered Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Handoff {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  companyId      String           @db.Uuid
+  conversationId String           @db.Uuid
+  requestedBy    HandoffRequester
+  requestedById  String?          @db.Uuid
+  reason         String
+  acceptedById   String?          @db.Uuid
+  acceptedAt     DateTime?        @db.Timestamptz(6)
+  resolvedAt     DateTime?        @db.Timestamptz(6)
+  /// Resumo do atendimento humano gerado ao devolver para a IA.
+  resolutionSummary String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([conversationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catálogo
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Service {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  companyId       String   @db.Uuid
+  name            String
+  description     String?
+  category        String?
+  priceCents      Int?
+  /// Ex.: "a partir de", "sob avaliação".
+  priceNote       String?
+  /// O agente só informa preço quando autorizado.
+  priceVisibleToAi Boolean @default(true)
+  durationMinutes Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([companyId, isActive])
+}
+
+model Product {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  companyId        String   @db.Uuid
+  name             String
+  description      String?
+  category         String?
+  sku              String?
+  priceCents       Int?
+  priceNote        String?
+  priceVisibleToAi Boolean  @default(true)
+  trackStock       Boolean  @default(false)
+  stockQuantity    Int?
+  /// Atributos definidos pelo template (ex.: imóvel: bairro, dormitórios, finalidade).
+  attributes       Json?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, sku])
+  @@index([companyId, isActive])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base de conhecimento
+// ─────────────────────────────────────────────────────────────────────────────
+
+model KnowledgeDocument {
+  id         String           @id @default(uuid(7)) @db.Uuid
+  companyId  String           @db.Uuid
+  title      String
+  fileName   String?
+  mimeType   String?
+  sizeBytes  Int?
+  storageKey String?
+  status     ProcessingStatus @default(PENDING)
+  error      String?
+  createdAt  DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(6)
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries KnowledgeEntry[]
+
+  @@index([companyId, createdAt])
+}
+
+model KnowledgeEntry {
+  id           String                   @id @default(uuid(7)) @db.Uuid
+  companyId    String                   @db.Uuid
+  type         KnowledgeEntryType       @default(TEXT)
+  title        String
+  content      String
+  tags         String[]                 @default([])
+  isActive     Boolean                  @default(true)
+  documentId   String?                  @db.Uuid
+  chunkIndex   Int?
+  /// Coluna gerada (tsvector português + unaccent) — definida na migração SQL.
+  searchVector Unsupported("tsvector")?    @default(dbgenerated("knowledge_search_vector(title, content, tags)"))
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz(6)
+
+  company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  document KnowledgeDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isActive])
+  @@index([documentId])
+  @@index([searchVector], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "KnowledgeEntry_title_trgm_idx")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agenda e integrações
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Appointment {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  companyId       String            @db.Uuid
+  contactId       String            @db.Uuid
+  serviceId       String?           @db.Uuid
+  integrationId   String?           @db.Uuid
+  startAt         DateTime          @db.Timestamptz(6)
+  endAt           DateTime          @db.Timestamptz(6)
+  /// Timezone IANA usado na criação (ex.: America/Sao_Paulo).
+  timezone        String
+  status          AppointmentStatus @default(PENDING)
+  notes           String?
+  externalId      String?
+  createdByType   ActorType         @default(USER)
+  createdById     String?           @db.Uuid
+  cancelledReason String?
+  reminderSentAt  DateTime?         @db.Timestamptz(6)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6)
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact     Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  service     Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, startAt])
+  @@index([companyId, status])
+  @@index([contactId])
+}
+
+model Integration {
+  id                   String              @id @default(uuid(7)) @db.Uuid
+  companyId            String              @db.Uuid
+  provider             IntegrationProvider
+  status               IntegrationStatus   @default(PENDING)
+  /// Configuração não secreta (ex.: calendarId).
+  config               Json?
+  /// Credenciais criptografadas (AES-256-GCM).
+  credentialsEncrypted String?
+  externalAccountId    String?
+  lastError            String?
+  lastSyncAt           DateTime?           @db.Timestamptz(6)
+  connectedAt          DateTime?           @db.Timestamptz(6)
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(6)
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([companyId, provider])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consumo, planos e limites
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UsageRecord {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  companyId        String    @db.Uuid
+  kind             UsageKind
+  quantity         Int       @default(1)
+  model            String?
+  inputTokens      Int       @default(0)
+  outputTokens     Int       @default(0)
+  cacheReadTokens  Int       @default(0)
+  cacheWriteTokens Int       @default(0)
+  costUsd          Decimal   @default(0) @db.Decimal(12, 6)
+  agentRunId       String?   @db.Uuid
+  conversationId   String?   @db.Uuid
+  isTest           Boolean   @default(false)
+  occurredAt       DateTime  @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, occurredAt])
+  @@index([companyId, kind, occurredAt])
+  @@index([occurredAt])
+}
+
+model Plan {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  key         String   @unique
+  name        String
+  description String?
+  priceCents  Int      @default(0)
+  currency    String   @default("BRL")
+  isActive    Boolean  @default(true)
+  /// { "AI_CALLS_PER_MONTH": 5000, ... } — nulo/ausente = ilimitado.
+  limits      Json
+  features    FeatureFlagKey[] @default([])
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(uuid(7)) @db.Uuid
+  companyId          String             @unique @db.Uuid
+  planId             String             @db.Uuid
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime           @db.Timestamptz(6)
+  currentPeriodEnd   DateTime?          @db.Timestamptz(6)
+  /// Reservado para o provedor de cobrança futuro.
+  externalId         String?
+  cancelAt           DateTime?          @db.Timestamptz(6)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+}
+
+/// Sobrescrita de limite por empresa (prevalece sobre o plano).
+model UsageLimit {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  companyId       String      @db.Uuid
+  metric          UsageMetric
+  /// Nulo = ilimitado.
+  limitValue      Decimal?    @db.Decimal(14, 4)
+  warningPercent  Int         @default(80)
+  createdAt       DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, metric])
+}
+
+model CompanyFeatureFlag {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  companyId String         @db.Uuid
+  flag      FeatureFlagKey
+  enabled   Boolean
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, flag])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Eventos, automações e notificações
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Outbox de eventos internos (message.received, lead.stage_changed, ...).
+model DomainEvent {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  companyId   String    @db.Uuid
+  type        String
+  payload     Json
+  processedAt DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, type, createdAt])
+  @@index([processedAt])
+}
+
+model Automation {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  companyId  String    @db.Uuid
+  name       String
+  trigger    String
+  /// Condições simples: [{ field, op, value }]
+  conditions Json      @default("[]")
+  /// Ações: [{ type: "add_tag", tagName } | { type: "send_template", ... } | ...]
+  actions    Json
+  isActive   Boolean   @default(true)
+  runCount   Int       @default(0)
+  lastRunAt  DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  runs    AutomationRun[]
+
+  @@index([companyId, trigger, isActive])
+}
+
+model AutomationRun {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  companyId    String   @db.Uuid
+  automationId String   @db.Uuid
+  eventId      String   @db.Uuid
+  status       String
+  error        String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, eventId])
+  @@index([companyId, createdAt])
+}
+
+model Notification {
+  id        String               @id @default(uuid(7)) @db.Uuid
+  /// Nulo = notificação da plataforma (visível só para administradores da plataforma).
+  companyId String?              @db.Uuid
+  /// Nulo = todos os membros com acesso; preenchido = apenas este usuário.
+  userId    String?              @db.Uuid
+  type      NotificationType
+  severity  NotificationSeverity @default(INFO)
+  title     String
+  body      String?
+  link      String?
+  data      Json?
+  createdAt DateTime             @default(now()) @db.Timestamptz(6)
+
+  company Company?           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reads   NotificationRead[]
+
+  @@index([companyId, createdAt])
+}
+
+model NotificationRead {
+  notificationId String   @db.Uuid
+  userId         String   @db.Uuid
+  readAt         DateTime @default(now()) @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auditoria e erros
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  companyId    String?   @db.Uuid
+  actorType    ActorType
+  actorUserId  String?   @db.Uuid
+  actorLabel   String?
+  action       String
+  resourceType String
+  resourceId   String?
+  /// Metadados seguros (nunca segredos).
+  metadata     Json?
+  ip           String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model ErrorLog {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  companyId      String?     @db.Uuid
+  source         ErrorSource
+  code           String
+  message        String
+  context        Json?
+  conversationId String?     @db.Uuid
+  requestId      String?
+  jobId          String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([createdAt])
+}

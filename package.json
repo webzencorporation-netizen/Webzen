@@ -1,0 +1,43 @@
+{
+  "name": "botsaas",
+  "private": true,
+  "description": "Plataforma multiempresa de agentes de IA para WhatsApp (API oficial da Meta + Claude).",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @botsaas/api --filter @botsaas/web run dev",
+    "dev:api": "pnpm --filter @botsaas/api run dev",
+    "dev:worker": "pnpm --filter @botsaas/api run dev:worker",
+    "dev:web": "pnpm --filter @botsaas/web run dev",
+    "services:local": "tsx scripts/local-services.ts",
+    "build": "pnpm -r run build",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter @botsaas/web run test:e2e",
+    "db:generate": "pnpm --filter @botsaas/database run generate",
+    "db:migrate": "pnpm --filter @botsaas/database run migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @botsaas/database run migrate:deploy",
+    "db:seed": "pnpm --filter @botsaas/database run seed",
+    "db:studio": "pnpm --filter @botsaas/database run studio"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.15.0",
+    "dotenv": "^18.0.4",
+    "embedded-postgres": "18.4.0-beta.17",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "redis-memory-server": "^0.17.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1"
+  }
+}
