@@ -136,7 +136,11 @@ export function validateEnvRules(env: Env): string[] {
 }
 
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source);
+  // Variáveis vazias (ex.: `COOKIE_SECURE=` no .env) contam como não definidas.
+  const cleaned = Object.fromEntries(
+    Object.entries(source).filter(([, value]) => value !== undefined && value.trim() !== ''),
+  );
+  const parsed = envSchema.safeParse(cleaned);
   if (!parsed.success) {
     throw new EnvValidationError(
       parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`),

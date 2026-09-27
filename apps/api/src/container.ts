@@ -1,4 +1,5 @@
 import type { Env } from '@botsaas/config';
+import type { Redis } from 'ioredis';
 import type { Logger } from './lib/logger';
 import { SecretBox } from './lib/crypto';
 import type { JobQueue } from './queues/types';
@@ -14,6 +15,8 @@ export interface AppContainer {
   queue: JobQueue;
   secrets: SecretBox | null;
   providers: Providers;
+  /** Conexão Redis compartilhada (rate limit distribuído, heartbeat de workers, health). */
+  redis: Redis | null;
 }
 
 export interface CreateContainerOptions {
@@ -21,13 +24,21 @@ export interface CreateContainerOptions {
   logger: Logger;
   queue: JobQueue;
   providers?: Partial<Providers>;
+  redis?: Redis | null;
 }
 
-export function createContainer({ env, logger, queue, providers }: CreateContainerOptions): AppContainer {
+export function createContainer({
+  env,
+  logger,
+  queue,
+  providers,
+  redis,
+}: CreateContainerOptions): AppContainer {
   return {
     env,
     logger,
     queue,
+    redis: redis ?? null,
     secrets: env.ENCRYPTION_KEY ? new SecretBox(env.ENCRYPTION_KEY) : null,
     providers: { ...createProviders(env, logger), ...providers },
   };

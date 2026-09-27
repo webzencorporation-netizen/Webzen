@@ -13,7 +13,11 @@ export interface RecordedJob<N extends JobName = JobName> {
 export class InMemoryJobQueue implements JobQueue {
   jobs: RecordedJob[] = [];
 
-  async enqueue<N extends JobName>(name: N, payload: JobPayloads[N], options: EnqueueOptions = {}): Promise<void> {
+  async enqueue<N extends JobName>(
+    name: N,
+    payload: JobPayloads[N],
+    options: EnqueueOptions = {},
+  ): Promise<void> {
     if (options.jobId && this.jobs.some((job) => job.options.jobId === options.jobId)) return;
     if (options.debounceId) {
       this.jobs = this.jobs.filter((job) => job.options.debounceId !== options.debounceId);

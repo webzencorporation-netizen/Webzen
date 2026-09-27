@@ -4,9 +4,12 @@ import type { SystemDb } from '../client';
 
 const DATABASE_PACKAGE_DIR = path.resolve(import.meta.dirname, '../..');
 
-/** Aplica as migrações no banco de testes (chamado no globalSetup do Vitest). */
+/**
+ * Aplica migrações pendentes no banco de testes (não destrutivo). A limpeza de dados entre
+ * testes é feita por `truncateAllTables`, que só roda em bancos com "test" no nome.
+ */
 export function migrateTestDatabase(databaseUrl: string): void {
-  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'reset', '--force'], {
+  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
     cwd: DATABASE_PACKAGE_DIR,
     env: { ...process.env, DATABASE_URL: databaseUrl, PRISMA_HIDE_UPDATE_MESSAGE: '1' },
     stdio: 'pipe',

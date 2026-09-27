@@ -1,4 +1,5 @@
 import type { TenantDb } from '@botsaas/database';
+import type { AppContainer } from './container';
 import type { CompanyPermission, CompanyRole, PlatformRole } from '@botsaas/shared';
 
 export type ActorKind = 'USER' | 'PLATFORM_ADMIN' | 'AI' | 'CONTACT' | 'SYSTEM';
@@ -43,4 +44,9 @@ export interface TenantContext {
   isSupportMode: boolean;
   requestId?: string;
   ip?: string;
+}
+
+/** Contexto completo passado aos serviços de domínio: empresa + infraestrutura. */
+export interface CompanyScope extends TenantContext {
+  container: AppContainer;
 }

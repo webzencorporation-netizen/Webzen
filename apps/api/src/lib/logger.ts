@@ -35,7 +35,12 @@ export function createLoggerOptions(level: string, pretty: boolean): LoggerOptio
     base: { service: process.env.SERVICE_NAME ?? 'botsaas-api' },
     timestamp: pino.stdTimeFunctions.isoTime,
     ...(pretty
-      ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } } }
+      ? {
+          transport: {
+            target: 'pino-pretty',
+            options: { colorize: true, translateTime: 'SYS:HH:MM:ss' },
+          },
+        }
       : {}),
   };
 }

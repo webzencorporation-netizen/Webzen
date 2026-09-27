@@ -7,10 +7,18 @@ export interface JobPayloads {
   'agent.reply': { companyId: string; conversationId: string };
   'message.send': { companyId: string; messageId: string };
   'media.process': { companyId: string; mediaAssetId: string };
-  'conversation.summarize': { companyId: string; conversationId: string; reason: 'threshold' | 'handoff_return' };
+  'conversation.summarize': {
+    companyId: string;
+    conversationId: string;
+    reason: 'threshold' | 'handoff_return';
+  };
   'domain-event.dispatch': { companyId: string; eventId: string };
   'knowledge.process-document': { companyId: string; documentId: string };
-  'calendar.sync': { companyId: string; appointmentId: string; action: 'create' | 'update' | 'delete' };
+  'calendar.sync': {
+    companyId: string;
+    appointmentId: string;
+    action: 'create' | 'update' | 'delete';
+  };
   'appointments.reminders': Record<string, never>;
   'maintenance.retention': Record<string, never>;
 }
@@ -43,7 +51,11 @@ export interface EnqueueOptions {
 }
 
 export interface JobQueue {
-  enqueue<N extends JobName>(name: N, payload: JobPayloads[N], options?: EnqueueOptions): Promise<void>;
+  enqueue<N extends JobName>(
+    name: N,
+    payload: JobPayloads[N],
+    options?: EnqueueOptions,
+  ): Promise<void>;
   close(): Promise<void>;
 }
 

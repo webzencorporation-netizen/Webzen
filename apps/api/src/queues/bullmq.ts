@@ -1,5 +1,12 @@
 import { Queue, type ConnectionOptions } from 'bullmq';
-import { JOB_NAMES, JOB_RETRY_POLICY, type EnqueueOptions, type JobName, type JobPayloads, type JobQueue } from './types';
+import {
+  JOB_NAMES,
+  JOB_RETRY_POLICY,
+  type EnqueueOptions,
+  type JobName,
+  type JobPayloads,
+  type JobQueue,
+} from './types';
 
 export const QUEUE_PREFIX = 'botsaas';
 
@@ -34,7 +41,11 @@ export class BullJobQueue implements JobQueue {
     return queue;
   }
 
-  async enqueue<N extends JobName>(name: N, payload: JobPayloads[N], options: EnqueueOptions = {}): Promise<void> {
+  async enqueue<N extends JobName>(
+    name: N,
+    payload: JobPayloads[N],
+    options: EnqueueOptions = {},
+  ): Promise<void> {
     const policy = JOB_RETRY_POLICY[name];
     await this.queue(name).add(name, payload, {
       jobId: options.jobId,
