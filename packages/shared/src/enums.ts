@@ -105,7 +105,11 @@ export const AI_EFFORT_LEVELS = ['low', 'medium', 'high'] as const;
 export type AiEffortLevel = (typeof AI_EFFORT_LEVELS)[number];
 
 /** O que fazer quando a IA falha ou um limite é atingido. */
-export const AI_FALLBACK_BEHAVIORS = ['HANDOFF_TO_HUMAN', 'SEND_FALLBACK_MESSAGE', 'SILENT'] as const;
+export const AI_FALLBACK_BEHAVIORS = [
+  'HANDOFF_TO_HUMAN',
+  'SEND_FALLBACK_MESSAGE',
+  'SILENT',
+] as const;
 export type AiFallbackBehavior = (typeof AI_FALLBACK_BEHAVIORS)[number];
 
 export const AGENT_RUN_STATUSES = ['RUNNING', 'SUCCEEDED', 'FAILED', 'SKIPPED'] as const;
@@ -120,10 +124,22 @@ export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 export const INTEGRATION_STATUSES = ['PENDING', 'CONNECTED', 'ERROR', 'DISCONNECTED'] as const;
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
 
-export const WEBHOOK_EVENT_STATUSES = ['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED', 'IGNORED'] as const;
+export const WEBHOOK_EVENT_STATUSES = [
+  'RECEIVED',
+  'PROCESSING',
+  'PROCESSED',
+  'FAILED',
+  'IGNORED',
+] as const;
 export type WebhookEventStatus = (typeof WEBHOOK_EVENT_STATUSES)[number];
 
-export const MEDIA_PROCESSING_STATUSES = ['PENDING', 'DOWNLOADED', 'PROCESSED', 'FAILED', 'SKIPPED'] as const;
+export const MEDIA_PROCESSING_STATUSES = [
+  'PENDING',
+  'DOWNLOADED',
+  'PROCESSED',
+  'FAILED',
+  'SKIPPED',
+] as const;
 export type MediaProcessingStatus = (typeof MEDIA_PROCESSING_STATUSES)[number];
 
 export const NOTIFICATION_TYPES = [

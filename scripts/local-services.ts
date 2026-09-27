@@ -51,7 +51,9 @@ async function main() {
   const redis = await startRedis();
   console.log('\nServiços locais prontos:');
   console.log(`  DATABASE_URL=postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/botsaas`);
-  console.log(`  TEST_DATABASE_URL=postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/botsaas_test`);
+  console.log(
+    `  TEST_DATABASE_URL=postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/botsaas_test`,
+  );
   console.log(`  REDIS_URL=redis://localhost:${await redis.getPort()}`);
   console.log('\nCtrl+C para encerrar.');
 

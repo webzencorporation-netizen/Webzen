@@ -29,12 +29,22 @@ describe('applyTenantScope', () => {
       applyTenantScope('Contact', 'create', { data: { phone: '55', companyId: B } }, A),
     ).toThrow(TenantScopeViolation);
     expect(() =>
-      applyTenantScope('Contact', 'create', { data: { phone: '55', company: { connect: { id: B } } } }, A),
+      applyTenantScope(
+        'Contact',
+        'create',
+        { data: { phone: '55', company: { connect: { id: B } } } },
+        A,
+      ),
     ).toThrow(TenantScopeViolation);
   });
 
   it('aplica escopo em createMany', () => {
-    const result = applyTenantScope('Tag', 'createMany', { data: [{ name: 'a' }, { name: 'b' }] }, A);
+    const result = applyTenantScope(
+      'Tag',
+      'createMany',
+      { data: [{ name: 'a' }, { name: 'b' }] },
+      A,
+    );
     expect(result.data).toEqual([
       { name: 'a', companyId: A },
       { name: 'b', companyId: A },

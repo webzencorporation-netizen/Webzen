@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 import * as prismaEnums from '../src/generated/prisma/enums';
 import { TENANT_SCOPED_MODELS } from '../src/tenant';
 
-const schema = fs.readFileSync(path.resolve(import.meta.dirname, '../prisma/schema.prisma'), 'utf8');
+const schema = fs.readFileSync(
+  path.resolve(import.meta.dirname, '../prisma/schema.prisma'),
+  'utf8',
+);
 
 function modelsWithCompanyId(): string[] {
   const models: string[] = [];

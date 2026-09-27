@@ -92,7 +92,10 @@ export class WhatsAppError extends AppError {
 }
 
 export class RateLimitError extends AppError {
-  constructor(message = 'Muitas requisições. Tente novamente em instantes.', options?: AppErrorOptions) {
+  constructor(
+    message = 'Muitas requisições. Tente novamente em instantes.',
+    options?: AppErrorOptions,
+  ) {
     super(ERROR_CODES.RATE_LIMIT, 429, message, { retryable: true, ...options });
   }
 }

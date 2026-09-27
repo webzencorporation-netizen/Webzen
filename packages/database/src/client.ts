@@ -35,7 +35,9 @@ export const systemDb: SystemDb = new Proxy({} as SystemDb, {
   get(_target, property) {
     const client = getSystemDb();
     const value = Reflect.get(client, property) as unknown;
-    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value;
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
   },
 });
 

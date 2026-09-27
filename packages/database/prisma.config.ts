@@ -12,6 +12,7 @@ export default defineConfig({
   },
   datasource: {
     // Fallback só permite `prisma generate` sem banco configurado; migrações exigem DATABASE_URL real.
-    url: process.env.DATABASE_URL ?? 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
+    url:
+      process.env.DATABASE_URL ?? 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
   },
 });

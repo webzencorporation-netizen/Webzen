@@ -111,7 +111,9 @@ export function validateEnvRules(env: Env): string[] {
   }
 
   if (env.ENCRYPTION_KEY && Buffer.from(env.ENCRYPTION_KEY, 'base64').length !== 32) {
-    issues.push('ENCRYPTION_KEY deve ter 32 bytes codificados em base64 (openssl rand -base64 32).');
+    issues.push(
+      'ENCRYPTION_KEY deve ter 32 bytes codificados em base64 (openssl rand -base64 32).',
+    );
   }
   if (env.AI_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
     issues.push('ANTHROPIC_API_KEY é obrigatória quando AI_PROVIDER=anthropic.');
@@ -126,7 +128,9 @@ export function validateEnvRules(env: Env): string[] {
     issues.push('S3_BUCKET é obrigatória quando STORAGE_PROVIDER=s3.');
   }
   if (env.STT_PROVIDER === 'openai-compatible' && (!env.STT_API_URL || !env.STT_API_KEY)) {
-    issues.push('STT_API_URL e STT_API_KEY são obrigatórias quando STT_PROVIDER=openai-compatible.');
+    issues.push(
+      'STT_API_URL e STT_API_KEY são obrigatórias quando STT_PROVIDER=openai-compatible.',
+    );
   }
   return issues;
 }

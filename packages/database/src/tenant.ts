@@ -128,7 +128,8 @@ export function applyTenantScope(
 
   if (WHERE_OPERATIONS.has(operation)) {
     scoped.where = scopeWhere(model, scoped.where, companyId);
-    if (DATA_UPDATE_OPERATIONS.has(operation)) assertUpdateKeepsCompany(model, scoped.data, companyId);
+    if (DATA_UPDATE_OPERATIONS.has(operation))
+      assertUpdateKeepsCompany(model, scoped.data, companyId);
     return scoped;
   }
 
