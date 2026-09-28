@@ -1,10 +1,12 @@
 import type { AIMessage, AIProvider, AIRequest, AIResponse, AIToolCall, AIUsage } from './types';
 
+type MockResponse = Omit<AIResponse, 'attempts'>;
+
 export type MockScriptStep =
   | { text: string }
   | { toolCalls: { name: string; input: unknown }[]; text?: string }
   | { error: Error }
-  | { refusal: true };
+  | { refusal: true; category?: string };
 
 function estimateTokens(value: unknown): number {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
@@ -44,6 +46,15 @@ export class MockAIProvider implements AIProvider {
   }
 
   async complete(request: AIRequest): Promise<AIResponse> {
+    const response = await this.respond(request);
+    // Sem fallback simulado: uma única tentativa, atendida pelo modelo pedido.
+    return {
+      ...response,
+      attempts: [{ model: response.model, served: true, fallback: false, usage: response.usage }],
+    };
+  }
+
+  private async respond(request: AIRequest): Promise<MockResponse> {
     this.requests.push(request);
     const step = this.script.shift() ?? this.heuristic(request);
     if ('error' in step) throw step.error;
@@ -65,6 +76,7 @@ export class MockAIProvider implements AIProvider {
         toolCalls: [],
         stopReason: 'refusal',
         usage,
+        refusal: { category: step.category ?? null, explanation: null, recommendedModel: null },
         rawAssistantContent: [],
       };
     }

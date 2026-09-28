@@ -56,25 +56,38 @@ export async function emitAppointmentReminders(
  */
 export async function runRetention(container: AppContainer, now = new Date()) {
   const result = { messages: 0, webhookEvents: 0, sessions: 0, domainEvents: 0 };
+  const failures: unknown[] = [];
   const companies = await systemDb.company.findMany({
     where: { messageRetentionDays: { not: null } },
     select: { id: true, messageRetentionDays: true },
   });
   for (const company of companies) {
     if (!company.messageRetentionDays) continue;
-    const cutoff = new Date(now.getTime() - company.messageRetentionDays * 24 * 3600_000);
-    const scope = systemScope(container, company.id);
-    const media = await scope.db.mediaAsset.findMany({
-      where: { createdAt: { lt: cutoff }, storageKey: { not: null } },
-      select: { storageKey: true },
-    });
-    for (const item of media) {
-      if (item.storageKey)
-        await container.providers.storage.delete(item.storageKey).catch(() => undefined);
+    try {
+      const cutoff = new Date(now.getTime() - company.messageRetentionDays * 24 * 3600_000);
+      const scope = systemScope(container, company.id);
+      // Inclui mídias recentes de mensagens antigas: o cascade também as removeria.
+      const mediaWhere = {
+        OR: [{ createdAt: { lt: cutoff } }, { message: { createdAt: { lt: cutoff } } }],
+      };
+      const media = await scope.db.mediaAsset.findMany({
+        where: { ...mediaWhere, storageKey: { not: null } },
+        select: { storageKey: true },
+      });
+      for (const item of media) {
+        // Falha interrompe antes de perder as referências; próximo job pode repetir.
+        if (item.storageKey) await container.providers.storage.delete(item.storageKey);
+      }
+      await scope.db.mediaAsset.deleteMany({ where: mediaWhere });
+      const deleted = await scope.db.message.deleteMany({ where: { createdAt: { lt: cutoff } } });
+      result.messages += deleted.count;
+    } catch (error) {
+      failures.push(error);
+      container.logger.error(
+        { companyId: company.id, errorName: error instanceof Error ? error.name : 'unknown' },
+        'Retenção pendente após falha',
+      );
     }
-    await scope.db.mediaAsset.deleteMany({ where: { createdAt: { lt: cutoff } } });
-    const deleted = await scope.db.message.deleteMany({ where: { createdAt: { lt: cutoff } } });
-    result.messages += deleted.count;
   }
   const technicalCutoff = new Date(now.getTime() - 30 * 24 * 3600_000);
   result.webhookEvents = (
@@ -88,6 +101,11 @@ export async function runRetention(container: AppContainer, now = new Date()) {
   result.sessions = (
     await systemDb.session.deleteMany({ where: { expiresAt: { lt: now } } })
   ).count;
-  container.logger.info({ retention: result }, 'Retenção aplicada');
+  container.logger.info(
+    { retention: result, failedCompanies: failures.length },
+    'Retenção executada',
+  );
+  if (failures.length > 0)
+    throw new AggregateError(failures, `Falha na retenção de ${failures.length} empresa(s).`);
   return result;
 }

@@ -8,7 +8,12 @@ import { applyStatusUpdate } from '../messaging/status';
 
 export const WHATSAPP_PROVIDER_KEY = 'whatsapp';
 
-export type RecordOutcome = 'queued' | 'duplicate' | 'unknown_number' | 'unsupported';
+export type RecordOutcome =
+  | 'queued'
+  | 'duplicate'
+  | 'unknown_number'
+  | 'unsupported'
+  | 'without_phone';
 
 /**
  * Etapa síncrona do webhook: identifica a empresa pelo phone_number_id, persiste o evento
@@ -24,7 +29,10 @@ export async function recordWebhookEvent(
         select: { id: true, companyId: true },
       })
     : null;
-  const ignored = !account || event.kind === 'unsupported';
+  // Sem telefone não há contato: o evento fica retido (IGNORED + payload) para reprocessamento
+  // quando houver identificação por BSUID, em vez de virar PROCESSED sem efeito.
+  const ignored =
+    !account || event.kind === 'unsupported' || event.kind === 'message_without_phone';
 
   let stored;
   try {
@@ -39,8 +47,27 @@ export async function recordWebhookEvent(
       },
     });
   } catch (error) {
-    if (isUniqueConstraintError(error)) return 'duplicate';
-    throw error;
+    if (!isUniqueConstraintError(error)) throw error;
+    const existing = await systemDb.webhookEvent.findUniqueOrThrow({
+      where: {
+        provider_dedupeKey: { provider: WHATSAPP_PROVIDER_KEY, dedupeKey: event.dedupeKey },
+      },
+    });
+    // A gravação pode ter sido seguida de falha no Redis. O mesmo jobId preserva
+    // a deduplicação na fila enquanto a reentrega recupera o evento sem job.
+    if (
+      existing.companyId &&
+      (existing.status === 'RECEIVED' || existing.status === 'PROCESSING')
+    ) {
+      await container.queue.enqueue(
+        'webhook.process',
+        { webhookEventId: existing.id },
+        { jobId: `wh-${existing.id}` },
+      );
+    }
+    // FAILED segue os retries limitados do worker. Não reabre job esgotado e
+    // retido no BullMQ; esse caso requer intervenção/replay explícito.
+    return 'duplicate';
   }
 
   if (!account) {
@@ -51,6 +78,21 @@ export async function recordWebhookEvent(
     return 'unknown_number';
   }
   if (event.kind === 'unsupported') return 'unsupported';
+  if (event.kind === 'message_without_phone') {
+    container.logger.warn(
+      { companyId: account.companyId, webhookEventId: stored.id, userId: event.userId },
+      'Mensagem de WhatsApp sem telefone (somente BSUID) retida sem atendimento',
+    );
+    await recordError({
+      source: 'WEBHOOK',
+      code: 'whatsapp_message_without_phone',
+      message:
+        'Cliente com nome de usuário do WhatsApp enviou mensagem sem telefone; ela foi retida e não será respondida automaticamente.',
+      companyId: account.companyId,
+      context: { webhookEventId: stored.id, userId: event.userId ?? null },
+    });
+    return 'without_phone';
+  }
 
   await systemDb.whatsAppAccount.update({
     where: { id: account.id },

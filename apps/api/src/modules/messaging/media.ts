@@ -23,6 +23,15 @@ const EXTENSIONS: Record<string, string> = {
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
+async function schedulePendingReply(scope: CompanyScope, messageId: string | null) {
+  if (!messageId) return;
+  const message = await scope.db.message.findFirst({
+    where: { id: messageId, agentHandledAt: null },
+    select: { conversationId: true },
+  });
+  if (message) await scheduleAgentReply(scope, message.conversationId, 500);
+}
+
 export function extensionFor(mimeType: string | null | undefined): string {
   const base = mimeType?.split(';')[0]?.trim().toLowerCase() ?? '';
   return EXTENSIONS[base] ?? 'bin';
@@ -41,8 +50,17 @@ export async function processMediaAsset(
     where: { id: mediaAssetId },
     include: { message: { select: { conversationId: true } } },
   });
-  if (!media || media.processingStatus === 'PROCESSED' || media.processingStatus === 'SKIPPED')
+  if (!media) return;
+  if (
+    media.processingStatus === 'PROCESSED' ||
+    media.processingStatus === 'SKIPPED' ||
+    media.processingStatus === 'FAILED'
+  ) {
+    // O processamento pode ter terminado antes de uma falha de Redis. Recuperar
+    // o agendamento sem baixar/transcrever novamente uma mídia já finalizada.
+    await schedulePendingReply(scope, media.messageId);
     return;
+  }
   const { container } = scope;
 
   try {
@@ -124,5 +142,5 @@ export async function processMediaAsset(
     });
   }
 
-  if (media.message) await scheduleAgentReply(scope, media.message.conversationId, 500);
+  await schedulePendingReply(scope, media.messageId);
 }

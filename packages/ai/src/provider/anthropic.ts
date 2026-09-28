@@ -1,12 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AIProviderError } from '@botsaas/shared';
 import type {
+  AIAttempt,
   AIMessage,
   AIProvider,
+  AIRefusal,
   AIRequest,
   AIResponse,
   AIStopReason,
   AIToolCall,
+  AIUsage,
   AIUserBlock,
 } from './types';
 
@@ -128,6 +131,74 @@ function mapError(error: unknown): AIProviderError {
   });
 }
 
+function toUsage(usage: {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}): AIUsage {
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
+  };
+}
+
+/**
+ * `usage.iterations` (beta) registra cada tentativa: `message` para o modelo que recusou,
+ * `fallback_message` para o que atendeu, sempre por último. O `usage` de topo cobre
+ * somente a tentativa atendida; tokens de modelos diferentes nunca são somados.
+ */
+function toAttempts(response: Anthropic.Message | Anthropic.Beta.BetaMessage): AIAttempt[] {
+  const usage = toUsage(response.usage);
+  const iterations = 'iterations' in response.usage ? response.usage.iterations : null;
+  if (!iterations?.length) {
+    return [{ model: response.model, served: true, fallback: false, usage }];
+  }
+  return iterations.map((entry, index) => ({
+    model: ('model' in entry ? entry.model : null) ?? response.model,
+    served: index === iterations.length - 1,
+    fallback: entry.type === 'fallback_message',
+    usage: toUsage(entry),
+  }));
+}
+
+function toRefusal(
+  response: Anthropic.Message | Anthropic.Beta.BetaMessage,
+): AIRefusal | undefined {
+  if (response.stop_reason !== 'refusal') return undefined;
+  const details = response.stop_details;
+  return {
+    category: details?.category ?? null,
+    explanation: details?.explanation ?? null,
+    recommendedModel:
+      details && 'recommended_model' in details ? (details.recommended_model ?? null) : null,
+  };
+}
+
+function toAIResponse(response: Anthropic.Message | Anthropic.Beta.BetaMessage): AIResponse {
+  const toolCalls: AIToolCall[] = [];
+  const texts: string[] = [];
+  for (const block of response.content) {
+    if (block.type === 'text') texts.push(block.text);
+    if (block.type === 'tool_use')
+      toolCalls.push({ id: block.id, name: block.name, input: block.input });
+  }
+  const refusal = toRefusal(response);
+  return {
+    model: response.model,
+    text: texts.join('\n').trim(),
+    toolCalls,
+    stopReason: mapStopReason(response.stop_reason),
+    usage: toUsage(response.usage),
+    attempts: toAttempts(response),
+    ...(refusal ? { refusal } : {}),
+    // Devolvido intacto na próxima iteração: o bloco `fallback` deve manter sua posição.
+    rawAssistantContent: response.content,
+  };
+}
+
 export class AnthropicProvider implements AIProvider {
   readonly name = 'anthropic' as const;
   private readonly client: Anthropic;
@@ -164,42 +235,20 @@ export class AnthropicProvider implements AIProvider {
         : {}),
     };
 
-    let response: Anthropic.Message;
+    let response: Anthropic.Message | Anthropic.Beta.BetaMessage;
     try {
-      if (this.config.refusalFallback && REFUSAL_FALLBACK_MODELS.has(request.model)) {
-        response = (await this.client.beta.messages.create({
-          ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
-          betas: [REFUSAL_FALLBACK_BETA],
-          // Parâmetro beta: o modelo alternativo é escolhido pela Anthropic conforme a categoria da recusa.
-          ...({ fallbacks: 'default' } as Record<string, unknown>),
-        })) as unknown as Anthropic.Message;
-      } else {
-        response = await this.client.messages.create(params);
-      }
+      response =
+        this.config.refusalFallback && REFUSAL_FALLBACK_MODELS.has(request.model)
+          ? await this.client.beta.messages.create({
+              ...params,
+              betas: [REFUSAL_FALLBACK_BETA],
+              // O modelo alternativo é escolhido pela Anthropic conforme a categoria da recusa.
+              fallbacks: 'default',
+            })
+          : await this.client.messages.create(params);
     } catch (error) {
       throw mapError(error);
     }
-
-    const toolCalls: AIToolCall[] = [];
-    const texts: string[] = [];
-    for (const block of response.content) {
-      if (block.type === 'text') texts.push(block.text);
-      if (block.type === 'tool_use')
-        toolCalls.push({ id: block.id, name: block.name, input: block.input });
-    }
-    const usage = response.usage;
-    return {
-      model: response.model,
-      text: texts.join('\n').trim(),
-      toolCalls,
-      stopReason: mapStopReason(response.stop_reason),
-      usage: {
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-        cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
-      },
-      rawAssistantContent: response.content,
-    };
+    return toAIResponse(response);
   }
 }

@@ -1,5 +1,6 @@
 import { buildSummaryInput, SUMMARY_SYSTEM_PROMPT, type HistoryMessage } from '@botsaas/ai';
 import type { CompanyScope } from '../../context';
+import { getOwnCompany, isCompanyExecutionBlocked } from '../../lib/company-record';
 import { costFor } from './pricing';
 
 const MAX_MESSAGES_PER_SUMMARY = 200;
@@ -35,6 +36,7 @@ export async function summarizeConversation(
   const { container } = scope;
   const config = await scope.db.aIConfiguration.findFirst({ select: { model: true } });
   const model = container.env.AI_SUMMARY_MODEL ?? config?.model ?? container.env.AI_DEFAULT_MODEL;
+  if (isCompanyExecutionBlocked((await getOwnCompany(scope)).status)) return null;
   const response = await container.providers.ai.complete({
     model,
     system: [{ text: SUMMARY_SYSTEM_PROMPT }],
@@ -47,6 +49,21 @@ export async function summarizeConversation(
     tools: [],
     maxOutputTokens: 2048,
     effort: 'low',
+  });
+  // Consumo observado existe mesmo sem texto ou se a gravação do resumo falhar.
+  // Persisti-lo antes do resultado de domínio evita perder essa evidência.
+  await scope.db.usageRecord.create({
+    data: {
+      companyId: scope.companyId,
+      kind: 'AI_CALL',
+      model: response.model,
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
+      cacheReadTokens: response.usage.cacheReadTokens,
+      cacheWriteTokens: response.usage.cacheWriteTokens,
+      costUsd: await costFor(response.model, response.usage),
+      conversationId,
+    },
   });
   const summary = response.text.trim();
   if (!summary) return null;
@@ -62,20 +79,6 @@ export async function summarizeConversation(
     },
     update: { summary, coveredUntil: last.createdAt, messagesCovered: { increment: rows.length } },
   });
-  await scope.db.usageRecord.create({
-    data: {
-      companyId: scope.companyId,
-      kind: 'AI_CALL',
-      model: response.model,
-      inputTokens: response.usage.inputTokens,
-      outputTokens: response.usage.outputTokens,
-      cacheReadTokens: response.usage.cacheReadTokens,
-      cacheWriteTokens: response.usage.cacheWriteTokens,
-      costUsd: await costFor(response.model, response.usage),
-      conversationId,
-    },
-  });
-
   if (reason === 'handoff_return') {
     const handoff = await scope.db.handoff.findFirst({
       where: { conversationId, resolvedAt: { not: null } },

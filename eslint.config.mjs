@@ -1,6 +1,7 @@
 // @ts-check
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -10,6 +11,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/.next/**',
+      '**/.next-e2e/**',
+      '**/test-results/**',
+      '**/playwright-report/**',
       '**/coverage/**',
       '**/next-env.d.ts',
       'packages/database/src/generated/**',
@@ -56,9 +60,18 @@ export default tseslint.config(
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
   {
-    files: ['scripts/**/*.ts', '**/seed.ts', '**/*.test.ts', '**/test/**/*.ts'],
+    files: ['apps/web/screenshots.mjs', 'apps/web/e2e/**/*.ts'],
+    rules: { 'no-console': 'off' },
+  },
+  {
+    files: ['scripts/**/*.ts', '**/seed.ts', '**/seed/**/*.ts', '**/*.test.ts', '**/test/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
   prettier,

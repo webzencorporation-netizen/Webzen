@@ -20,7 +20,12 @@ export interface CloudApiConfig {
   fetchImpl?: typeof fetch;
 }
 
-/** Códigos da Graph/Cloud API em que repetir mais tarde é seguro. */
+/**
+ * Códigos da Graph/Cloud API em que repetir mais tarde é seguro, conforme a tabela oficial
+ * (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes,
+ * conferida em 2026-09-27). 131049 (limite por usuário) pede espera de 24h: não é repetido
+ * pelos retries curtos do worker.
+ */
 const RETRYABLE_ERROR_CODES = new Set([
   1, // API unknown
   2, // API service temporarily unavailable
@@ -30,6 +35,8 @@ const RETRYABLE_ERROR_CODES = new Set([
   131000, // Something went wrong
   131016, // Service unavailable
   131056, // Pair rate limit (mesmo destinatário)
+  131057, // Conta em manutenção
+  133004, // Servidor temporariamente indisponível
 ]);
 
 /** Códigos com significado específico exibido ao atendente. */
@@ -40,9 +47,21 @@ export const WHATSAPP_ERROR_HINTS: Record<number, string> = {
   131053: 'Falha ao enviar mídia.',
   132000: 'Parâmetros do template não conferem.',
   132001: 'Template inexistente ou não aprovado.',
+  0: 'Falha de autenticação na Meta: token expirado ou revogado — reconecte o WhatsApp.',
   190: 'Token de acesso expirado ou inválido — reconecte o WhatsApp.',
+  368: 'Conta do WhatsApp Business restrita por violação de política — verifique o WhatsApp Manager.',
   130429: 'Limite de envio da API atingido — nova tentativa automática.',
+  131031: 'Conta do WhatsApp Business bloqueada ou com verificação pendente.',
+  131042: 'Problema na forma de pagamento da conta do WhatsApp Business.',
+  131048: 'Envio bloqueado pela qualidade do número (spam) — verifique o WhatsApp Manager.',
+  131049: 'A Meta limitou mensagens de marketing para este contato; tente após 24h.',
+  131050: 'O contato parou de receber mensagens de marketing desta empresa.',
   131056: 'Muitas mensagens para o mesmo contato em pouco tempo.',
+  131057: 'Conta do WhatsApp Business em manutenção — nova tentativa automática.',
+  131062:
+    'Este tipo de mensagem não pode ser enviado a contato identificado só por nome de usuário.',
+  132015: 'Template pausado por baixa qualidade — edite e reenvie para aprovação.',
+  132016: 'Template desativado permanentemente — crie um novo template.',
 };
 
 export class WhatsAppApiError extends WhatsAppError {
@@ -259,6 +278,25 @@ export class CloudApiProvider implements MessagingProvider {
       components: template.components ?? [],
     }));
   }
+
+  /** Apps inscritos nos webhooks da WABA. Sem inscrição, a Meta não entrega mensagens. */
+  async listSubscribedApps(
+    credentials: WhatsAppCredentials,
+    wabaId: string,
+  ): Promise<SubscribedApp[]> {
+    const body = await this.request<{
+      data?: { whatsapp_business_api_data?: { id?: string; name?: string } }[];
+    }>(credentials, `${encodeURIComponent(wabaId)}/subscribed_apps`);
+    return (body.data ?? []).map((entry) => ({
+      id: entry.whatsapp_business_api_data?.id,
+      name: entry.whatsapp_business_api_data?.name,
+    }));
+  }
+}
+
+export interface SubscribedApp {
+  id?: string;
+  name?: string;
 }
 
 export function toApiError(status: number, body: GraphErrorBody): WhatsAppApiError {

@@ -77,13 +77,41 @@ export interface AIUsage {
   cacheWriteTokens: number;
 }
 
+/**
+ * Uma tentativa executada pelo provedor dentro de UMA chamada. Com fallback server-side,
+ * cada modelo que recusou e o que atendeu aparecem separados (`usage.iterations`).
+ * Uma tentativa recusada antes de qualquer saída só é cobrada em algumas categorias,
+ * que a resposta final não informa por tentativa: aqui é consumo reportado, não custo.
+ */
+export interface AIAttempt {
+  model: string;
+  /** Tentativa que produziu a resposta retornada (a última da cadeia). */
+  served: boolean;
+  /** Executada por um modelo de fallback (inclusive roteamento sticky). */
+  fallback: boolean;
+  usage: AIUsage;
+}
+
+/** Detalhes de `stop_reason: "refusal"`. `category` nula é um valor válido e permanente. */
+export interface AIRefusal {
+  category: string | null;
+  /** Texto informativo e instável: exibir/registrar, nunca interpretar. */
+  explanation: string | null;
+  /** Presente quando o fallback não pôde ser tentado (ex.: limite do modelo alternativo). */
+  recommendedModel: string | null;
+}
+
 export interface AIResponse {
   /** Modelo que efetivamente respondeu (pode diferir em caso de fallback). */
   model: string;
   text: string;
   toolCalls: AIToolCall[];
   stopReason: AIStopReason;
+  /** Consumo da tentativa que produziu a resposta (mesma semântica do `usage` da API). */
   usage: AIUsage;
+  /** Todas as tentativas desta chamada, em ordem. Sem fallback: uma única, igual a `usage`. */
+  attempts: AIAttempt[];
+  refusal?: AIRefusal;
   rawAssistantContent: unknown;
 }
 

@@ -9,6 +9,7 @@ export {
   exchangeGoogleCode,
   GOOGLE_CALENDAR_SCOPES,
   GoogleCalendarProvider,
+  GoogleReauthorizationRequiredError,
   type GoogleCalendarProviderOptions,
   type GoogleOAuthConfig,
   type GoogleTokens,

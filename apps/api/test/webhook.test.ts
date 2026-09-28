@@ -128,6 +128,39 @@ describe('webhook do WhatsApp', () => {
     expect(await systemDb.message.count()).toBe(0);
   });
 
+  it('mensagem só com BSUID (sem telefone) fica retida e visível, sem ser dada como processada', async () => {
+    const company = await createCompanyFixture(harness, { name: 'Clínica', ownerEmail: 'a@a.com' });
+    await createWhatsAppAccount(company.id, '111');
+    const payload = inboundText('111', '5511999990000', 'quero agendar', 'wamid.bsuid-1');
+    const value = payload.entry[0]!.changes[0]!.value;
+    value.contacts = [
+      { profile: { name: 'Bia', username: 'bia' }, user_id: 'BR.9999' },
+    ] as unknown as typeof value.contacts;
+    const { from: _omitted, ...withoutPhone } = value.messages[0]!;
+    value.messages = [{ ...withoutPhone, from_user_id: 'BR.9999' }] as unknown as typeof value.messages;
+
+    for (let delivery = 0; delivery < 2; delivery += 1) {
+      const response = await postWebhook(harness, payload);
+      expect(response.statusCode).toBe(200);
+    }
+
+    const stored = await systemDb.webhookEvent.findFirstOrThrow();
+    expect(stored).toMatchObject({
+      eventType: 'message_without_phone',
+      status: 'IGNORED',
+      companyId: company.id,
+      dedupeKey: 'wamid.bsuid-1',
+    });
+    expect(JSON.stringify(stored.payload)).toContain('quero agendar');
+    expect(countJobs(harness, 'webhook.process')).toBe(0);
+    expect(await systemDb.contact.count()).toBe(0);
+    const errors = await systemDb.errorLog.findMany({ where: { companyId: company.id } });
+    expect(errors).toEqual([
+      expect.objectContaining({ source: 'WEBHOOK', code: 'whatsapp_message_without_phone' }),
+    ]);
+    expect(errors[0]?.message).not.toContain('quero agendar');
+  });
+
   it('atualiza status enviado → entregue → lido sem regredir e registra falhas', async () => {
     const company = await createCompanyFixture(harness, { name: 'Clínica', ownerEmail: 'a@a.com' });
     await createWhatsAppAccount(company.id, '111');

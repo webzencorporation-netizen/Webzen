@@ -28,7 +28,9 @@ export function ChangePasswordDialog({ open, forced, onOpenChange }: { open: boo
       setCurrent('');
       setNext('');
       setConfirm('');
-      await client.invalidateQueries({ queryKey: ['me'] });
+      // Consultas protegidas podem ter recebido 403 enquanto a senha era provisória.
+      // Recarrega as ativas e deixa as demais obsoletas para a próxima navegação.
+      await client.invalidateQueries();
       onOpenChange(false);
     } catch (submitError) {
       setError(errorMessage(submitError));

@@ -53,8 +53,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) throw new Error('useToast fora do ToastProvider');
-  return {
-    success: (message: string) => context.push('success', message),
-    error: (message: string) => context.push('error', message),
-  };
+  const { push } = context;
+  // Referência estável: pode ser usada em dependências de efeitos.
+  return useMemo(
+    () => ({
+      success: (message: string) => push('success', message),
+      error: (message: string) => push('error', message),
+    }),
+    [push],
+  );
 }

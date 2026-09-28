@@ -20,11 +20,18 @@ export interface Providers {
   speechToText: SpeechToTextProvider;
 }
 
+/** Falha de composição: um provider real foi pedido mas não pode ser construído. */
+function missing(provider: string, variable: string): never {
+  throw new Error(`${provider} exige ${variable}; recusando substituir por simulação.`);
+}
+
 export function createProviders(env: Env, logger: Logger): Providers {
+  // `validateEnvRules` já recusa estes casos; aqui eles falham em vez de degradar em silêncio
+  // caso um env chegue sem a validação cruzada.
   const ai: AIProvider =
-    env.AI_PROVIDER === 'anthropic' && env.ANTHROPIC_API_KEY
+    env.AI_PROVIDER === 'anthropic'
       ? new AnthropicProvider({
-          apiKey: env.ANTHROPIC_API_KEY,
+          apiKey: env.ANTHROPIC_API_KEY ?? missing('AI_PROVIDER=anthropic', 'ANTHROPIC_API_KEY'),
           timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
           refusalFallback: env.AI_REFUSAL_FALLBACK,
         })
@@ -39,9 +46,9 @@ export function createProviders(env: Env, logger: Logger): Providers {
       : new MockMessagingProvider();
 
   const storage: ObjectStorageProvider =
-    env.STORAGE_PROVIDER === 's3' && env.S3_BUCKET
+    env.STORAGE_PROVIDER === 's3'
       ? new S3ObjectStorage({
-          bucket: env.S3_BUCKET,
+          bucket: env.S3_BUCKET ?? missing('STORAGE_PROVIDER=s3', 'S3_BUCKET'),
           region: env.S3_REGION,
           endpoint: env.S3_ENDPOINT,
           accessKeyId: env.S3_ACCESS_KEY_ID,
@@ -52,10 +59,10 @@ export function createProviders(env: Env, logger: Logger): Providers {
 
   let speechToText: SpeechToTextProvider = new DisabledSpeechToText();
   if (env.STT_PROVIDER === 'mock') speechToText = new MockSpeechToText();
-  if (env.STT_PROVIDER === 'openai-compatible' && env.STT_API_URL && env.STT_API_KEY) {
+  if (env.STT_PROVIDER === 'openai-compatible') {
     speechToText = new OpenAICompatibleSpeechToText({
-      url: env.STT_API_URL,
-      apiKey: env.STT_API_KEY,
+      url: env.STT_API_URL ?? missing('STT_PROVIDER=openai-compatible', 'STT_API_URL'),
+      apiKey: env.STT_API_KEY ?? missing('STT_PROVIDER=openai-compatible', 'STT_API_KEY'),
       model: env.STT_MODEL,
     });
   }
@@ -67,6 +74,11 @@ export function createProviders(env: Env, logger: Logger): Providers {
     speechToText: speechToText.name,
   };
   const mocks = Object.entries(summary).filter(([, name]) => name === 'mock' || name === 'local');
+  if (mocks.length > 0 && env.NODE_ENV === 'production') {
+    throw new Error(
+      `Providers simulados/locais recusados em produção: ${mocks.map(([kind, name]) => `${kind}=${name}`).join(', ')}.`,
+    );
+  }
   if (mocks.length > 0) {
     logger.warn(
       { providers: summary },

@@ -15,5 +15,10 @@ export {
   TenantScopeViolation,
   type TenantDb,
 } from './tenant';
-export { decimalToNumber, isUniqueConstraintError, isNotFoundError } from './utils';
+export {
+  decimalToNumber,
+  isUniqueConstraintError,
+  isNotFoundError,
+  isTransactionConflictError,
+} from './utils';
 export { getDummyHash, hashPassword, PASSWORD_MIN_LENGTH, verifyPassword } from './password';

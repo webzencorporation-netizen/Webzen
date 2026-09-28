@@ -11,10 +11,12 @@ coverage/
 !.env.example
 .turbo/
 .local/
-storage/
+/storage/
+/apps/api/storage/
 packages/database/src/generated/
 playwright-report/
 test-results/
 *.log
 .DS_Store
 tsconfig.tsbuildinfo
+.next-e2e/

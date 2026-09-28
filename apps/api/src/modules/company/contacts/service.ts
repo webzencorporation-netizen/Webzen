@@ -185,11 +185,12 @@ export async function deleteContact(scope: CompanyScope, id: string) {
     where: { message: { conversation: { contactId: id } }, storageKey: { not: null } },
     select: { storageKey: true },
   });
-  await scope.db.contact.delete({ where: { id } });
+  // Preservar referências se o storage falhar permite repetir a exclusão.
+  // Deletes do provider são idempotentes; não há transação entre storage e banco.
   for (const item of media) {
-    if (item.storageKey)
-      await scope.container.providers.storage.delete(item.storageKey).catch(() => undefined);
+    if (item.storageKey) await scope.container.providers.storage.delete(item.storageKey);
   }
+  await scope.db.contact.delete({ where: { id } });
   await audit(scope, {
     action: 'contact.deleted',
     resourceType: 'Contact',

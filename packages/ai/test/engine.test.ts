@@ -67,6 +67,10 @@ const baseInput = (provider: MockAIProvider, ctx: Ctx) => ({
   meta: { dryRun: false },
 });
 
+function usageOf(inputTokens: number, outputTokens: number) {
+  return { inputTokens, outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0 };
+}
+
 describe('AgentEngine', () => {
   it('executa tool, devolve resultado e produz resposta final', async () => {
     const provider = new MockAIProvider().enqueue(
@@ -158,6 +162,47 @@ describe('AgentEngine', () => {
     const result = await AgentEngine.run(baseInput(provider, { companyId: 'c1', calls: [] }));
     expect(result.outcome).toBe('refused');
     expect(result.text).toBe('');
+  });
+
+  it('expõe a categoria da recusa para registro operacional', async () => {
+    const provider = new MockAIProvider().enqueue({ refusal: true, category: 'cyber' });
+    const result = await AgentEngine.run(baseInput(provider, { companyId: 'c1', calls: [] }));
+    expect(result.refusal).toEqual({
+      category: 'cyber',
+      explanation: null,
+      recommendedModel: null,
+    });
+  });
+
+  it('acumula as tentativas do provedor de todas as iterações, em ordem', async () => {
+    const provider = new MockAIProvider().enqueue(
+      { toolCalls: [{ name: 'search_services', input: { query: 'pele' } }] },
+      { text: 'Custa R$ 150,00.' },
+    );
+    const fallbackAttempts = [
+      { model: 'claude-opus-5', served: false, fallback: false, usage: usageOf(40, 0) },
+      { model: 'claude-opus-4-8', served: true, fallback: true, usage: usageOf(40, 8) },
+    ];
+    let call = 0;
+    const withFallbackOnSecondCall: typeof provider = Object.assign(Object.create(provider), {
+      complete: async (request: Parameters<typeof provider.complete>[0]) => {
+        const response = await provider.complete(request);
+        call += 1;
+        return call === 2
+          ? { ...response, model: 'claude-opus-4-8', attempts: fallbackAttempts }
+          : response;
+      },
+    });
+
+    const result = await AgentEngine.run(
+      baseInput(withFallbackOnSecondCall, { companyId: 'c1', calls: [] }),
+    );
+
+    expect(result.outcome).toBe('answered');
+    expect(result.attempts).toHaveLength(3);
+    expect(result.attempts[0]).toMatchObject({ model: 'claude-opus-5', served: true });
+    expect(result.attempts.slice(1)).toEqual(fallbackAttempts);
+    expect(result.refusal).toBeUndefined();
   });
 
   it('propaga erro do provedor para o orquestrador decidir retry', async () => {

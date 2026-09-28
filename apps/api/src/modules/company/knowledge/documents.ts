@@ -146,9 +146,8 @@ export async function processKnowledgeDocument(scope: CompanyScope, documentId: 
 export async function deleteKnowledgeDocument(scope: CompanyScope, documentId: string) {
   const document = await scope.db.knowledgeDocument.findUnique({ where: { id: documentId } });
   if (!document) throw new NotFoundError('Documento não encontrado.');
+  if (document.storageKey) await scope.container.providers.storage.delete(document.storageKey);
   await scope.db.knowledgeDocument.delete({ where: { id: documentId } });
-  if (document.storageKey)
-    await scope.container.providers.storage.delete(document.storageKey).catch(() => undefined);
   await audit(scope, {
     action: 'knowledge.document_deleted',
     resourceType: 'KnowledgeDocument',

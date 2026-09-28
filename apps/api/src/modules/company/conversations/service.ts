@@ -373,10 +373,10 @@ export async function deleteConversation(scope: CompanyScope, conversationId: st
     where: { message: { conversationId }, storageKey: { not: null } },
     select: { storageKey: true },
   });
-  await scope.db.conversation.delete({ where: { id: conversationId } });
+  // Não apagar a referência dos objetos que ainda precisam ser removidos.
   for (const item of media)
-    if (item.storageKey)
-      await scope.container.providers.storage.delete(item.storageKey).catch(() => undefined);
+    if (item.storageKey) await scope.container.providers.storage.delete(item.storageKey);
+  await scope.db.conversation.delete({ where: { id: conversationId } });
   await audit(scope, {
     action: 'conversation.deleted',
     resourceType: 'Conversation',

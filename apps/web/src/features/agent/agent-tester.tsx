@@ -67,7 +67,9 @@ export function AgentTester() {
   });
 
   const messages = conversation.data?.messages ?? [];
-  useEffect(() => bottomRef.current?.scrollIntoView({ block: 'end' }), [messages.length, send.isPending]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages.length, send.isPending]);
 
   function submit(event: FormEvent) {
     event.preventDefault();

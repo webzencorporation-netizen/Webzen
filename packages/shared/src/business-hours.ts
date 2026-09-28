@@ -13,7 +13,17 @@ export const businessDaySchema = z
       .max(4)
       .default([]),
   })
-  .refine((day) => day.open < day.close, { message: 'Abertura deve ser antes do fechamento' });
+  .refine((day) => day.open < day.close, { message: 'Abertura deve ser antes do fechamento' })
+  .refine(
+    (day) =>
+      day.breaks.every(
+        (pause) => pause.start < pause.end && pause.start >= day.open && pause.end <= day.close,
+      ),
+    {
+      message: 'Pausas devem ter início antes do fim e ficar dentro do expediente',
+      path: ['breaks'],
+    },
+  );
 
 export const weeklyScheduleSchema = z.array(businessDaySchema).max(14);
 
@@ -87,13 +97,18 @@ export function getOpeningIntervals(
   const intervals: { start: number; end: number }[] = [];
   for (const day of schedule.filter((item) => item.weekday === weekday)) {
     const breaks = [...(day.breaks ?? [])].sort((a, b) => a.start.localeCompare(b.start));
-    let cursor = toMinutes(day.open);
-    for (const pause of breaks) {
-      const pauseStart = toMinutes(pause.start);
-      if (pauseStart > cursor) intervals.push({ start: cursor, end: pauseStart });
-      cursor = Math.max(cursor, toMinutes(pause.end));
-    }
+    const open = toMinutes(day.open);
     const close = toMinutes(day.close);
+    let cursor = open;
+    for (const pause of breaks) {
+      // Dados antigos podem não ter passado pela validação atual. A pausa nunca
+      // pode ampliar o expediente nem produzir intervalos duplicados.
+      const pauseStart = Math.max(open, Math.min(close, toMinutes(pause.start)));
+      const pauseEnd = Math.max(open, Math.min(close, toMinutes(pause.end)));
+      if (pauseEnd <= pauseStart) continue;
+      if (pauseStart > cursor) intervals.push({ start: cursor, end: pauseStart });
+      cursor = Math.max(cursor, pauseEnd);
+    }
     if (close > cursor) intervals.push({ start: cursor, end: close });
   }
   return intervals;

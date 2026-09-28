@@ -1,12 +1,13 @@
 import type { ConversationChannel } from '@botsaas/database';
-import type { CompanyScope } from '../../context';
+import type { CompanyDataScope } from '../../context';
 import { emitDomainEvent } from '../../lib/events';
 import { getEnabledFeatures } from '../features/service';
 
 /** Encontra (ou cria) o contato pelo telefone. Não sobrescreve nome editado pela equipe. */
 export async function findOrCreateContact(
-  scope: CompanyScope,
+  scope: CompanyDataScope,
   input: { phone: string; profileName?: string | null; source: string },
+  writeEvent = emitDomainEvent,
 ) {
   const existing = await scope.db.contact.findUnique({
     where: { companyId_phone: { companyId: scope.companyId, phone: input.phone } },
@@ -23,35 +24,27 @@ export async function findOrCreateContact(
     }
     return { contact: existing, created: false };
   }
-  try {
-    const contact = await scope.db.contact.create({
-      data: {
-        companyId: scope.companyId,
-        phone: input.phone,
-        waId: input.phone,
-        name: input.profileName ?? null,
-        source: input.source,
-      },
-    });
-    await emitDomainEvent(scope, 'contact.created', {
-      contactId: contact.id,
+  const contact = await scope.db.contact.create({
+    data: {
+      companyId: scope.companyId,
+      phone: input.phone,
+      waId: input.phone,
+      name: input.profileName ?? null,
       source: input.source,
-    });
-    return { contact, created: true };
-  } catch (error) {
-    // Corrida entre dois webhooks simultâneos do mesmo contato: relê o registro.
-    const again = await scope.db.contact.findUnique({
-      where: { companyId_phone: { companyId: scope.companyId, phone: input.phone } },
-    });
-    if (again) return { contact: again, created: false };
-    throw error;
-  }
+    },
+  });
+  await writeEvent(scope, 'contact.created', {
+    contactId: contact.id,
+    source: input.source,
+  });
+  return { contact, created: true };
 }
 
 /** Conversa aberta mais recente do contato (reabre se estiver encerrada). */
 export async function findOrCreateConversation(
-  scope: CompanyScope,
+  scope: CompanyDataScope,
   input: { contactId: string; whatsappAccountId: string | null; channel: ConversationChannel },
+  writeEvent = emitDomainEvent,
 ) {
   const existing = await scope.db.conversation.findFirst({
     where: { contactId: input.contactId, channel: input.channel },
@@ -79,7 +72,7 @@ export async function findOrCreateConversation(
       status: 'OPEN',
     },
   });
-  await emitDomainEvent(scope, 'conversation.created', {
+  await writeEvent(scope, 'conversation.created', {
     conversationId: conversation.id,
     contactId: input.contactId,
   });
@@ -87,7 +80,12 @@ export async function findOrCreateConversation(
 }
 
 /** Garante um lead no funil para novos contatos (quando o CRM está habilitado). */
-export async function ensureLeadForContact(scope: CompanyScope, contactId: string, source: string) {
+export async function ensureLeadForContact(
+  scope: CompanyDataScope,
+  contactId: string,
+  source: string,
+  writeEvent = emitDomainEvent,
+) {
   const features = await getEnabledFeatures(scope);
   if (!features.has('CRM')) return null;
   const existing = await scope.db.lead.findFirst({ where: { contactId, closedAt: null } });
@@ -106,6 +104,6 @@ export async function ensureLeadForContact(scope: CompanyScope, contactId: strin
       position: Date.now(),
     },
   });
-  await emitDomainEvent(scope, 'lead.created', { leadId: lead.id, contactId });
+  await writeEvent(scope, 'lead.created', { leadId: lead.id, contactId });
   return lead;
 }

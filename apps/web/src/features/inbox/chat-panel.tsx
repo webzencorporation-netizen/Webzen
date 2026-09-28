@@ -222,7 +222,8 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
                   value={text}
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="Digite uma mensagem (Enter envia, Shift+Enter quebra linha)"
+                  placeholder="Digite uma mensagem"
+                  title="Enter envia · Shift+Enter quebra linha"
                   className="max-h-40 min-h-[44px] resize-none"
                   rows={1}
                   aria-label="Mensagem"

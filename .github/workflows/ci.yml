@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Quality, integration, build and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    # Serviços descartáveis exclusivos deste job. Nunca usar bancos de produção.
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: botsaas_ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: botsaas_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U botsaas_ci -d botsaas_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      PRISMA_HIDE_UPDATE_MESSAGE: '1'
+      DATABASE_URL: postgresql://botsaas_ci:ci-only-password@localhost:5432/botsaas_ci_test
+      TEST_DATABASE_URL: postgresql://botsaas_ci:ci-only-password@localhost:5432/botsaas_ci_test
+      REDIS_URL: redis://localhost:6379/0
+      # O setup E2E cria/recria somente este banco; o banco de integração é separado.
+      E2E_DATABASE_URL: postgresql://botsaas_ci:ci-only-password@localhost:5432/botsaas_ci_e2e
+      E2E_REDIS_URL: redis://localhost:6379/5
+      E2E_API_PORT: '4100'
+      E2E_WEB_PORT: '3100'
+      E2E_NEXT_DIST_DIR: .next-e2e/ci
+      AI_PROVIDER: mock
+      WHATSAPP_PROVIDER: mock
+      STT_PROVIDER: mock
+      STORAGE_PROVIDER: local
+      # Valores públicos de teste; não são credenciais de serviços externos.
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      WHATSAPP_APP_SECRET: ci-test-app-secret
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ci-test-verify-token
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+          package-manager-cache: false
+
+      - name: Set up pnpm from packageManager
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and PostgreSQL integration tests
+        # O global setup aplica as migrações no TEST_DATABASE_URL antes da suíte.
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Verify API, worker and bootstrap bundles
+        run: pnpm test:build
+
+      - name: Install Chromium and system dependencies
+        run: pnpm --filter @botsaas/web exec playwright install --with-deps chromium
+
+      - name: Browser tests with mock providers
+        # Executa os projetos desktop e mobile. O Playwright gerencia API, worker e web.
+        # Mocks aprovados não comprovam Meta, Anthropic, Google, S3 ou STT externos.
+        run: pnpm test:e2e
+
+      - name: Upload browser failure traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-traces
+          path: apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

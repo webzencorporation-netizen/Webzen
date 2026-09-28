@@ -96,6 +96,140 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS 4 + primitivos Radix (acessibi
 
 `docker-compose.yml` sobe Postgres + Redis. Para máquinas sem Docker, `pnpm services:local` usa `embedded-postgres` (binários oficiais) e `redis-memory-server`. Os testes de integração usam o mesmo mecanismo automaticamente quando `TEST_DATABASE_URL` não é fornecida.
 
+**Estado verificado em 2026-09-26:** o bootstrap automático da infraestrutura de testes ainda não existe. Hoje é preciso iniciar Docker ou `pnpm services:local`; o setup aplica migrações em `TEST_DATABASE_URL` (padrão `botsaas_test`). A automatização permanece pendente, sem mudar a opção de desenvolvimento sem Docker.
+
 ## D-015 — TypeScript 6.0
 
 TypeScript 7 (port nativo) já é `latest`, mas `typescript-eslint` suporta até `<6.1`. Fixamos TS 6.0.x até o ecossistema acompanhar.
+
+## D-016 — Dependências de execução dos bundles da API e worker
+
+**Contexto:** o esbuild incorpora os pacotes internos TypeScript e mantém dependências npm externas (D-001). O pnpm resolve essas dependências a partir de `apps/api/dist`; declarar Prisma, SDK Anthropic, SDK S3 e pg somente nos pacotes internos permitia compilar, mas impedia iniciar o bundle (`ERR_MODULE_NOT_FOUND`).
+
+**Decisão:** `apps/api/package.json` também declara as dependências externas usadas pelo código incorporado, nas mesmas versões já adotadas nos pacotes. O lockfile continua único; não há mudança de provider ou de arquitetura.
+
+**Verificação:** após `pnpm build`, executar `pnpm test:build`. O teste carrega os dois entrypoints e exige que a validação de produção recuse mocks, sem conectar a infraestrutura. Isso detecta módulos ausentes antes de um deploy; não substitui testes de readiness nem homologação de providers reais.
+
+## D-017 — Separação e ciclo de vida das suítes locais
+
+**Contexto:** Vitest coletava testes Playwright, ESLint percorria `.next-e2e`, e `pnpm exec` no `webServer` deixava processos em grupos separados no pnpm 12, impedindo o teardown.
+
+**Decisão:** Vitest do web coleta apenas `src` e `test`; Playwright executa os cenários de navegador e separa desktop/mobile. Saídas geradas ficam fora do lint. Pacotes sem suíte própria usam `--passWithNoTests` explicitamente, sem contabilizá-los como cobertura.
+
+API, worker e Next são iniciados diretamente via Node pelo Playwright, com encerramento SIGTERM limitado a cinco segundos. `E2E_DATABASE_URL`, `E2E_REDIS_URL`, `E2E_API_PORT`, `E2E_WEB_PORT` e `E2E_NEXT_DIST_DIR` permitem recursos exclusivos de testes; o Redis de aplicação (`REDIS_URL`) não é herdado como destino E2E. Servidores existentes não são reutilizados nem encerrados automaticamente.
+
+**Limite:** usar banco e Redis exclusivos para cada execução concorrente. Os providers externos permanecem simulados; a suíte não comprova comunicação real com Meta, Anthropic, Google ou S3.
+
+As credenciais do seed E2E são fixadas nas fixtures compartilhadas com os testes, independentemente de `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` do shell. O armazenamento é forçado para `local` no seed e nos servidores E2E.
+
+**Evolução em 2026-09-27:** todos os pacotes agora têm testes próprios e `--passWithNoTests` foi removido. O destino E2E é validado antes de conectar, e o reset sem `FORCE` ocorre no primeiro processo, antes de iniciar API/worker/painel; conexões existentes ao banco fazem o setup falhar sem serem encerradas.
+
+## D-018 — Entrada WhatsApp transacional e recuperação de jobs pendentes
+
+**Contexto:** uma falha entre PostgreSQL e Redis podia deixar um webhook sem job ou uma mensagem gravada sem mídia, métricas, lead ou resposta. O retorno antecipado por duplicação impedia completar o processamento.
+
+**Decisão:** a ingestão usa transação serializável no client com escopo de empresa para contato, conversa, mensagem, mídia, métricas, lead e outbox. Conflitos concorrentes refazem a transação com limite de tentativas. Somente depois do commit os jobs são publicados. Retries consultam o estado persistido e recompõem apenas trabalho pendente, sem incrementar contadores nem reagendar entradas já tratadas.
+
+A classificação compartilhada de conflito reconhece `P2034` e o `DriverAdapterError` de COMMIT do adapter-pg adotado (`TransactionWriteConflict`, SQLSTATE `40001`/`40P01`). Erros genéricos, conexão e outras restrições não recebem esse retry.
+
+Reentregas de webhooks `RECEIVED`/`PROCESSING` publicam o mesmo `jobId`. `FAILED` segue a política limitada de retries do worker; um job esgotado retido pelo BullMQ requer intervenção explícita. Não há reconciliador global, replay administrativo ou garantia de envio externo exatamente uma vez. Registros parciais anteriores à correção não recebem backfill automático. A chave real de webhook é `(provider, dedupeKey)`, corrigindo a descrição simplificada de D-006.
+
+## D-019 — Bootstrap explícito do primeiro administrador
+
+**Contexto:** seed de produção cria apenas referências e a criação normal de administradores exige autenticação. Uma implantação vazia não possuía caminho seguro para criar o primeiro proprietário.
+
+**Decisão:** CLI dedicada recebe banco, e-mail, nome e senha explícitos via ambiente/entrada não interativa, sem argumentos com senha, defaults demo ou inicialização de providers. Usa Argon2 existente e uma transação com advisory lock para criar exatamente um primeiro `PLATFORM_OWNER` e sua auditoria. Recusa qualquer administrador existente (inclusive inativo) e não promove/substitui usuários com e-mail já cadastrado. Não serve para recuperar acesso.
+
+**Verificação:** testes de concorrência, rollback da auditoria, preservação de usuários, validação e CLI; o smoke de bundles também carrega esse entrypoint sem conectar ao banco.
+
+## D-020 — Preservar aceite de envio e recuperar efeitos locais
+
+**Contexto:** o catch de envio também capturava falhas de métricas/enqueue após o provider aceitar a mensagem e convertia seu estado em `FAILED`. Mídias já processadas podiam perder o agendamento da IA quando Redis falhava.
+
+**Decisão:** classificar como falha de envio apenas a validação/preparação/chamada do provider. Depois do aceite, persistir ID externo e `sentAt`; retries com esse aceite registrado completam consumo/outbox de forma transacional e não chamam o provider novamente. A outbox existente identifica o efeito já registrado. Mídia finalizada apenas recupera agendamento de entrada ainda pendente.
+
+**Limites:** não há atomicidade entre API externa e PostgreSQL, nem garantia de exactly-once externo. A recuperação depende de retry e dos registros ainda retidos; não se deve reproduzir jobs antigos depois da retenção sem reconciliação operacional.
+
+## D-021 — Lease renovável para turnos de conversa
+
+**Contexto:** a implementação existente adotou Redis, diferindo do advisory lock proposto em D-007. O TTL fixo de 180 segundos podia expirar durante um turno com múltiplas chamadas/tools e permitir sobreposição.
+
+**Decisão:** preservar Redis e renovar o TTL por script Lua que verifica o token, a cada terço do prazo. Cada lease usa conexão dedicada, sem reconexão/fila offline e com comandos limitados por timeout. Prazo monotônico, falha de renovação, perda do token ou fechamento da conexão invalidam a posse permanentemente; a liberação só remove o próprio token. O runner verifica a posse antes de iniciar a IA e antes de novos efeitos de controle/publicação. Tools ainda não iniciadas retornam `lease_lost` antes de entrar no handler após perda da posse.
+
+Não interromper o loop já iniciado permite registrar o consumo e resultado retornados pelo engine; falhas intermediárias ainda podem perder consumo parcial no fluxo existente. Perda da lease impede resposta/fallback tardios e mantém entradas pendentes para retry, sem incrementar a falha operacional da IA. Sem Redis, os testes preservam lock local ao processo.
+
+**Limites:** não há fencing transacional com PostgreSQL nem cancelamento de requests/tools já em voo. A checagem local não consulta Redis em cada efeito; troca silenciosa de token só é detectada na renovação. O loop de IA já iniciado pode continuar chamadas até concluir/atingir o limite configurado, embora novas tools sejam bloqueadas. Não se promete exclusividade absoluta sob partições ou pausas do processo.
+
+## D-022 — Preservar referências de arquivos quando a exclusão falha
+
+**Contexto:** exclusões de contato/conversa/documento e retenção ignoravam falhas do storage, apagando as referências necessárias para repetir a remoção. O cascade também podia remover uma mídia recente ligada a uma mensagem antiga sem excluir seu objeto.
+
+**Decisão:** remover os objetos conhecidos antes dos registros e propagar falhas, preservando referências para retry. Os providers adotados têm delete idempotente. A retenção inclui mídia que será removida pelo cascade da mensagem, continua as outras empresas em caso de falha isolada e termina o job com erro agregado após a limpeza técnica.
+
+**Limites:** arquivos já removidos não são restaurados se uma etapa posterior falhar. Não há transação entre storage e banco, marca de exclusão nem bloqueio de uploads concorrentes; esses fluxos ainda precisam de reconciliação para concorrência, objetos órfãos anteriores e cópias externas. O job de retenção repete no próximo agendamento, sem novo mecanismo de retry imediato.
+
+## D-023 — Estado da empresa no atendimento automático
+
+**Contexto:** `SUSPENDED`/`CANCELLED` impediam o acesso normal ao painel, mas os jobs de atendimento continuavam iniciando IA e enviando mensagens. O botão de suspensão do agente altera `enabled` separadamente.
+
+**Decisão:** verificar o estado da própria empresa antes de novos turnos automáticos, antes da primeira chamada após preparar contexto, na revalidação do resultado e antes de novos resumos/envios. Suspensão/cancelamento mantém entradas pendentes, descarta resposta/fallback tardios e marca envio pendente como `send_blocked` sem chamar o provider. Um aceite externo já persistido continua reparando consumo/outbox, sem reenviar.
+
+Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito acessado por suporte autorizado. Reativar a empresa não desfaz pausa manual, não reenfileira automaticamente entradas antigas nem reabre mensagens `FAILED`.
+
+**Limites:** não é uma parada global de jobs. Recebimento, status de entrega, mídia/STT, calendário, conhecimento e manutenção continuam seus fluxos existentes. Engine, tools e requests já iniciados podem concluir; resumo já em voo pode concluir pelo fluxo existente, sem cancelamento pela suspensão. Há janela entre checagem e efeito, sem cancelamento externo ou fencing transacional.
+
+## D-024 — Registrar consumo do resumo antes do resultado de domínio
+
+**Contexto:** resposta vazia retornava antes de registrar uso, e falha na gravação do resumo também perdia as métricas já recebidas do provider.
+
+**Decisão:** persistir `UsageRecord` imediatamente após a resposta, antes de verificar texto vazio e antes do upsert do resumo. Falha do provider sem métricas não recebe uso inventado; preços, schema e contagem permanecem existentes. Cada nova tentativa que chama o provider representa uma nova operação de consumo.
+
+**Limites:** não há transação entre provider e banco. Queda/falha de persistência após consumo externo ainda pode impedir registro. Custo desconhecido, uso por modelo e consumo parcial do loop principal continuam pendentes no plano próprio.
+
+## D-025 — Tentativas e recusas do provider de IA explícitas; composição sem degradação silenciosa
+
+**Contexto:** a [documentação oficial de refusals e fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback) (conferida em 2026-09-27) define que, com `fallbacks`, o `usage` de topo cobre apenas a tentativa que produziu a resposta. Cada tentativa, inclusive as recusadas e cobráveis, aparece em `usage.iterations`. O adapter descartava `iterations` e `stop_details`, e não havia testes do provider real. Além disso, `createProviders` trocava silenciosamente um provider real incompleto por mock/local. Isso só era impedido porque todos os chamadores usavam o env validado.
+
+**Decisão:**
+
+- `AIResponse` mantém `usage` com a semântica da API e ganha `attempts` (modelo, `served`, `fallback`, tokens), além de `refusal` (`category`, `explanation`, `recommendedModel`). O engine acumula `attempts` do turno e expõe `refusal`. O runner grava a categoria em `AgentRun.errorMessage` (sem migração) e registra fallback/recusa em log, porque ambos chegam como HTTP 200.
+- O conteúdo do assistente continua sendo devolvido intacto no loop de tools, o que preserva a posição do bloco `fallback` exigida pela API. O caminho beta usa os tipos do SDK 0.128, sem conversões forçadas.
+- `createProviders` falha quando um provider real configurado está incompleto e recusa `mock`/`local` com `NODE_ENV=production`, como segunda barreira além de `validateEnvRules`.
+- A homologação real tem uma etapa automatizada (`pnpm homolog:anthropic [--cache]`) sobre o mesmo provider/engine do atendimento, com relatório sem segredos. Os testes de contrato usam o SDK real contra servidor HTTP local.
+
+**Limites:** tentativas recusadas antes de um fallback ainda não entram no custo estimado. O custo delas depende de categorias não expostas por tentativa e segue o [plano de custos](docs/COST_ACCOUNTING_PLAN.md). Testes de contrato comprovam o formato documentado, não a aceitação pela conta real; a homologação continua pendente de credencial.
+
+## D-026 — WhatsApp: BSUID sem perda silenciosa, erros oficiais e versão Graph
+
+**Contexto:** conferência de 2026-09-27 com a documentação oficial da Meta:
+
+- Desde abril de 2026, os webhooks trazem BSUID (`user_id`, `from_user_id`, `recipient_user_id`) e `username`. O telefone (`from`/`wa_id`) é omitido para usuários com nome de usuário sem interação com o número nos últimos 30 dias. O parser exigia `from`/`wa_id` e descartava essas mensagens, ou todas as mensagens da alteração quando um contato vinha sem `wa_id`. Nenhum registro ficava para diagnóstico.
+- A tabela oficial de erros marca `131057` e `133004` como "tentar depois".
+- A Graph API atual é `v26.0` (2026-07-29). D-011 descrevia `v25.0` como atual.
+- A partir de 2026-10-01, mensagens de serviço (texto livre na janela) são cobradas por mensagem, ao preço de utility.
+
+**Decisão:**
+
+- O parser preserva BSUID/username e aceita contato sem `wa_id`. Mensagem sem telefone vira evento `message_without_phone`, gravado como `WebhookEvent` `IGNORED` com empresa e payload completo, sem job, com `ErrorLog` (sem o texto) e log `warn`. Assim, fica retida para reprocessamento em vez de desaparecer ou ser marcada `PROCESSED` sem efeito.
+- A identificação por telefone (`Contact.phone`) permanece. Contato/envio por BSUID exige migração e decisão de produto: telefone opcional, vínculo e mescla quando o telefone surgir, `recipient` no envio e troca de número. Esse trabalho foi registrado como próxima etapa, não implementado agora.
+- Retries incluem `131057`/`133004`. Códigos que exigem ação humana ganham orientação em português, e `131049` não é repetido pelos retries curtos.
+- O padrão continua `v25.0` (suportada até 2028-07-29) enquanto não houver homologação. O roteiro manda homologar em `v26.0` e então trocar o padrão.
+- A homologação real ganha uma etapa automatizada, somente leitura por padrão: `pnpm homolog:whatsapp`. Ela confere URL/segredos do webhook, token/número, inscrição do app na WABA e templates, e envia um template só com `--send-to`.
+
+**Limites:** mensagens retidas não recebem resposta automática nem são reprocessadas sozinhas. O custo da Meta continua fora dos relatórios; os campos `pricing` dos status são lidos, mas não persistidos.
+
+## D-027 — Google Agenda recusa de forma visível; S3 compatível sem checksums obrigatórios
+
+**Contexto:** revisão de 2026-09-27 dos providers de agenda e storage:
+
+- Um refresh token revogado ou expirado (`invalid_grant`, inclusive o prazo de 7 dias do app OAuth em "Testing") gerava erro genérico a cada consulta. A integração continuava `CONNECTED` e ninguém era avisado.
+- Uma integração conectada sem `GOOGLE_*`/`ENCRYPTION_KEY` na instalação era ignorada em silêncio: a disponibilidade usava só a agenda interna, com risco de marcar sobre compromissos do Google.
+- O SDK S3 (≥ 3.729) envia checksums CRC por padrão, recusados por R2 e MinIO/Ceph antigos ([anúncio da AWS](https://github.com/aws/aws-sdk-js-v3/issues/6810)).
+
+**Decisão:**
+
+- `GoogleReauthorizationRequiredError` (não repetível) para `invalid_grant` na renovação ou ausência de refresh token. O hook `onReauthorizationRequired` muda a integração de `CONNECTED` para `ERROR` e notifica uma única vez (`INTEGRATION_DISCONNECTED`, crítica). Falhas 5xx do endpoint de token continuam repetíveis.
+- Integração em `ERROR`, ou conectada mas não montável, **recusa** a consulta com mensagem acionável. Isso preserva o comportamento existente de falhar fechado (já não havia agendamento com a autorização inválida) e o torna visível. Desconexão pelo usuário (`DISCONNECTED`) continua usando só a agenda interna.
+- `S3_ENDPOINT` definido implica `requestChecksumCalculation`/`responseChecksumValidation` = `WHEN_REQUIRED`; AWS S3 mantém as proteções padrão.
+
+**Limites:** a reconexão continua manual pelo painel. O job de espelhamento falha enquanto a integração estiver em `ERROR` e não reexecuta sozinho após reconectar. A homologação real de Google e S3 continua pendente de credenciais.

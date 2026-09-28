@@ -5,6 +5,7 @@ export {
   WhatsAppApiError,
   WHATSAPP_ERROR_HINTS,
   type CloudApiConfig,
+  type SubscribedApp,
 } from './cloud-api';
 export { MockMessagingProvider, type MockSentMessage } from './mock';
 export { CUSTOMER_SERVICE_WINDOW_MS, getMessagingWindow, type MessagingWindow } from './window';
@@ -20,3 +21,10 @@ export {
   type WebhookPayload,
 } from './webhook';
 export { buildTextMessageWebhook, buildStatusWebhook } from './fixtures';
+export {
+  runWhatsAppHomologation,
+  type WhatsAppCheckStatus,
+  type WhatsAppHomologationCheck,
+  type WhatsAppHomologationOptions,
+  type WhatsAppHomologationReport,
+} from './homologation';

@@ -72,6 +72,7 @@ export function CompanyShell({ children }: { children: ReactNode }) {
   if (!me.data.activeCompany) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 text-center">
+        <UserMenu me={me.data} />
         <p className="text-sm text-muted">Sua conta ainda não está vinculada a uma empresa.</p>
         {me.data.platformRole ? (
           <Button asChild>
@@ -128,7 +129,7 @@ export function CompanyShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       {me.data.supportMode ? <SupportBanner expiresAt={me.data.supportMode.expiresAt} /> : null}
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-border bg-surface scrollbar-thin lg:block">{sidebar}</aside>

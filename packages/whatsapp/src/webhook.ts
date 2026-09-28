@@ -72,6 +72,7 @@ const mediaSchema = z.looseObject({
 
 const messageSchema = z.looseObject({
   from: z.string(),
+  from_user_id: z.string().optional(),
   id: z.string(),
   timestamp: z.string(),
   type: z.string(),
@@ -107,17 +108,26 @@ const messageSchema = z.looseObject({
   errors: z.array(errorSchema).optional(),
 });
 
+/** Mínimo para reter uma mensagem identificada somente pelo BSUID (sem `from`). */
+const messageIdentitySchema = z.looseObject({
+  from: z.string().optional(),
+  from_user_id: z.string().optional(),
+  id: z.string(),
+});
+
 const statusSchema = z.looseObject({
   id: z.string(),
   status: z.string(),
   timestamp: z.string(),
   recipient_id: z.string().optional(),
+  recipient_user_id: z.string().optional(),
   errors: z.array(errorSchema).optional(),
   pricing: z
     .looseObject({
       billable: z.boolean().optional(),
       category: z.string().optional(),
       pricing_model: z.string().optional(),
+      type: z.string().optional(),
     })
     .optional(),
 });
@@ -130,8 +140,12 @@ const valueSchema = z.looseObject({
   contacts: z
     .array(
       z.looseObject({
-        wa_id: z.string(),
-        profile: z.looseObject({ name: z.string().optional() }).optional(),
+        // Omitido para usuários com nome de usuário sem interação recente (BSUID).
+        wa_id: z.string().optional(),
+        user_id: z.string().optional(),
+        profile: z
+          .looseObject({ name: z.string().optional(), username: z.string().optional() })
+          .optional(),
       }),
     )
     .optional(),
@@ -190,6 +204,7 @@ export function normalizeInboundMessage(raw: z.infer<typeof messageSchema>): Inb
   const message: InboundMessage = {
     externalId: raw.id,
     from: raw.from,
+    ...(raw.from_user_id ? { fromUserId: raw.from_user_id } : {}),
     timestamp: fromUnixSeconds(raw.timestamp),
     type,
     replyToExternalId: raw.context?.id,
@@ -242,6 +257,7 @@ function normalizeStatus(raw: z.infer<typeof statusSchema>): StatusUpdate | null
     externalId: raw.id,
     status: raw.status as OutboundStatus,
     recipientId: raw.recipient_id,
+    ...(raw.recipient_user_id ? { recipientUserId: raw.recipient_user_id } : {}),
     timestamp: fromUnixSeconds(raw.timestamp),
     errors: toErrors(raw.errors),
     pricing: raw.pricing
@@ -249,6 +265,7 @@ function normalizeStatus(raw: z.infer<typeof statusSchema>): StatusUpdate | null
           billable: raw.pricing.billable,
           category: raw.pricing.category,
           pricingModel: raw.pricing.pricing_model,
+          type: raw.pricing.type,
         }
       : undefined,
   };
@@ -282,9 +299,28 @@ export function parseWebhookPayload(payload: unknown): NormalizedWebhookEvent[] 
       const contacts = value.data.contacts ?? [];
 
       for (const rawMessage of value.data.messages ?? []) {
+        const withoutPhone = messageIdentitySchema.safeParse(rawMessage);
+        if (withoutPhone.success && withoutPhone.data.from === undefined) {
+          const userId = withoutPhone.data.from_user_id;
+          const contact = userId ? contacts.find((item) => item.user_id === userId) : undefined;
+          events.push({
+            kind: 'message_without_phone',
+            phoneNumberId,
+            dedupeKey: withoutPhone.data.id,
+            userId,
+            username: contact?.profile?.username,
+            profileName: contact?.profile?.name,
+            raw: rawMessage,
+          });
+          continue;
+        }
         const message = messageSchema.safeParse(rawMessage);
         if (!message.success) continue;
-        const contact = contacts.find((item) => item.wa_id === message.data.from) ?? contacts[0];
+        const contact =
+          contacts.find((item) => item.wa_id === message.data.from) ??
+          (contacts.length === 1 ? contacts[0] : undefined);
+        const userId = message.data.from_user_id ?? contact?.user_id;
+        const username = contact?.profile?.username;
         events.push({
           kind: 'message',
           phoneNumberId,
@@ -292,6 +328,8 @@ export function parseWebhookPayload(payload: unknown): NormalizedWebhookEvent[] 
           contact: {
             waId: contact?.wa_id ?? message.data.from,
             profileName: contact?.profile?.name,
+            ...(userId ? { userId } : {}),
+            ...(username ? { username } : {}),
           },
           message: normalizeInboundMessage(message.data),
         });

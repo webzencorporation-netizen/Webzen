@@ -1,4 +1,4 @@
-import type { TenantDb } from '@botsaas/database';
+import type { Prisma, TenantDb } from '@botsaas/database';
 import type { AppContainer } from './container';
 import type { CompanyPermission, CompanyRole, PlatformRole } from '@botsaas/shared';
 
@@ -50,3 +50,8 @@ export interface TenantContext {
 export interface CompanyScope extends TenantContext {
   container: AppContainer;
 }
+
+/** Operações de domínio também aceitam o client com escopo dentro de uma transação. */
+export type CompanyDataScope = Omit<CompanyScope, 'db'> & {
+  db: Pick<TenantDb, keyof Prisma.TransactionClient>;
+};

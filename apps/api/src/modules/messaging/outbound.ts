@@ -1,8 +1,14 @@
-import type { MessageSender, Prisma } from '@botsaas/database';
+import {
+  isTransactionConflictError,
+  type Prisma,
+  type Message,
+  type MessageSender,
+} from '@botsaas/database';
 import { ConflictError, NotFoundError, WhatsAppError } from '@botsaas/shared';
-import { getMessagingWindow, WhatsAppApiError } from '@botsaas/whatsapp';
+import { getMessagingWindow, WhatsAppApiError, type SendResult } from '@botsaas/whatsapp';
 import type { CompanyScope } from '../../context';
-import { emitDomainEvent } from '../../lib/events';
+import { getOwnCompany, isCompanyExecutionBlocked } from '../../lib/company-record';
+import { recordDomainEvent } from '../../lib/events';
 import { recordError } from '../../lib/error-log';
 import { notify } from '../../lib/notifications';
 import { resolveCredentials } from './accounts';
@@ -169,6 +175,50 @@ export interface SendAttempt {
   jobId?: string;
 }
 
+/** Consumo e outbox são recuperáveis sem voltar a chamar o provider. */
+async function completeOutboundEffects(
+  scope: CompanyScope,
+  message: Pick<Message, 'id' | 'conversationId' | 'sender'>,
+): Promise<void> {
+  let event: { id: string; processedAt: Date | null };
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      event = await scope.db.$transaction(
+        async (db) => {
+          const existing = await db.domainEvent.findFirst({
+            where: { type: 'message.sent', payload: { path: ['messageId'], equals: message.id } },
+            select: { id: true, processedAt: true },
+          });
+          if (existing) return existing;
+          await db.usageRecord.create({
+            data: {
+              companyId: scope.companyId,
+              kind: 'MESSAGE_SENT',
+              conversationId: message.conversationId,
+            },
+          });
+          const id = await recordDomainEvent({ ...scope, db }, 'message.sent', {
+            messageId: message.id,
+            conversationId: message.conversationId,
+            sender: message.sender,
+          });
+          return { id, processedAt: null };
+        },
+        { isolationLevel: 'Serializable' },
+      );
+      break;
+    } catch (error) {
+      if (!isTransactionConflictError(error) || attempt >= 4) throw error;
+    }
+  }
+  if (!event.processedAt)
+    await scope.container.queue.enqueue(
+      'domain-event.dispatch',
+      { companyId: scope.companyId, eventId: event.id },
+      { jobId: `event-${event.id}` },
+    );
+}
+
 /**
  * Processa o envio (job `message.send`). Idempotente: só envia mensagens em QUEUED.
  * Erros repetíveis relançam para o retry do job; os demais marcam FAILED e avisam o painel.
@@ -182,18 +232,39 @@ export async function processOutboundMessage(
     where: { id: messageId },
     include: { conversation: { include: { contact: true } } },
   });
-  if (!message || message.status !== 'QUEUED') return;
+  if (!message || message.direction !== 'OUTBOUND') return;
+  // O aceite já persistido é definitivo para este job, mesmo se uma etapa local
+  // posterior falhou ou um webhook já avançou o status de entrega.
+  if (message.externalId && message.sentAt) {
+    await completeOutboundEffects(scope, message);
+    return;
+  }
+  if (message.status !== 'QUEUED') return;
   const { conversation } = message;
   const provider = scope.container.providers.messaging;
+  let result: SendResult;
 
   try {
+    // A fila pode ter atrasado ou o contato pode ter revogado o consentimento
+    // depois do enqueue. Sempre revalidar antes de chamar o provider.
+    if (conversation.contact.optedOut)
+      throw new ConflictError('O contato pediu para não receber mensagens.');
+    if (
+      message.type !== 'TEMPLATE' &&
+      getMessagingWindow(conversation.lastInboundAt).requiresTemplate
+    )
+      throw new ConflictError(
+        'A janela de 24h está fechada. Envie um template aprovado para retomar a conversa.',
+      );
     const { credentials } = await resolveCredentials(scope, conversation.whatsappAccountId);
+    if (isCompanyExecutionBlocked((await getOwnCompany(scope)).status))
+      throw new ConflictError('Envio bloqueado: empresa suspensa ou cancelada.');
     const payload = (message.payload ?? {}) as {
       templateName?: string;
       languageCode?: string;
       bodyParameters?: string[];
     };
-    const result =
+    result =
       message.type === 'TEMPLATE' && payload.templateName && payload.languageCode
         ? await provider.sendTemplate(credentials, {
             to: conversation.contact.phone,
@@ -205,25 +276,6 @@ export async function processOutboundMessage(
             to: conversation.contact.phone,
             text: message.text ?? '',
           });
-
-    await scope.db.message.update({
-      where: { id: message.id },
-      data: {
-        status: 'SENT',
-        externalId: result.externalId,
-        sentAt: new Date(),
-        errorCode: null,
-        errorMessage: null,
-      },
-    });
-    await scope.db.usageRecord.create({
-      data: { companyId: scope.companyId, kind: 'MESSAGE_SENT', conversationId: conversation.id },
-    });
-    await emitDomainEvent(scope, 'message.sent', {
-      messageId: message.id,
-      conversationId: conversation.id,
-      sender: message.sender,
-    });
   } catch (error) {
     const retryable = error instanceof WhatsAppError ? error.retryable : false;
     const isLastAttempt = attempt.attemptsMade + 1 >= attempt.maxAttempts;
@@ -232,7 +284,9 @@ export async function processOutboundMessage(
     const code =
       error instanceof WhatsAppApiError && error.graphCode !== undefined
         ? String(error.graphCode)
-        : 'send_failed';
+        : error instanceof ConflictError
+          ? 'send_blocked'
+          : 'send_failed';
     const reason = error instanceof Error ? error.message : 'Falha ao enviar';
     await scope.db.message.update({
       where: { id: message.id },
@@ -262,5 +316,20 @@ export async function processOutboundMessage(
       conversationId: conversation.id,
       jobId: attempt.jobId,
     });
+    return;
   }
+
+  // Falhas locais após o aceite não são falhas de envio. Deixar o job repetir
+  // permite concluir consumo/outbox a partir do ID externo sem reenviar.
+  await scope.db.message.update({
+    where: { id: message.id },
+    data: {
+      status: 'SENT',
+      externalId: result.externalId,
+      sentAt: new Date(),
+      errorCode: null,
+      errorMessage: null,
+    },
+  });
+  await completeOutboundEffects(scope, message);
 }

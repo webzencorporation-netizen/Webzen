@@ -71,6 +71,156 @@ describe('parseWebhookPayload', () => {
     });
   });
 
+  function messagesChange(value: Record<string, unknown>) {
+    return {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_ID',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: '15550000000', phone_number_id: 'PN1' },
+                ...value,
+              },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('preserva BSUID e nome de usuário quando o telefone também vem no webhook', () => {
+    const events = parseWebhookPayload(
+      messagesChange({
+        contacts: [
+          {
+            profile: { name: 'Ana', username: 'ana.silva' },
+            wa_id: '5511999990000',
+            user_id: 'BR.13491208655302741918',
+          },
+        ],
+        messages: [
+          {
+            from: '5511999990000',
+            from_user_id: 'BR.13491208655302741918',
+            id: 'wamid.u1',
+            timestamp: '1790000000',
+            type: 'text',
+            text: { body: 'oi' },
+          },
+        ],
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: 'message',
+        contact: {
+          waId: '5511999990000',
+          profileName: 'Ana',
+          userId: 'BR.13491208655302741918',
+          username: 'ana.silva',
+        },
+        message: expect.objectContaining({
+          from: '5511999990000',
+          fromUserId: 'BR.13491208655302741918',
+        }),
+      }),
+    ]);
+  });
+
+  it('mensagem sem telefone (usuário com nome de usuário) não é descartada em silêncio', () => {
+    const rawMessage = {
+      from_user_id: 'BR.99990000111122223333',
+      id: 'wamid.u2',
+      timestamp: '1790000000',
+      type: 'text',
+      text: { body: 'quero agendar' },
+    };
+    const events = parseWebhookPayload(
+      messagesChange({
+        contacts: [
+          {
+            profile: { name: 'Bia', username: 'bia' },
+            user_id: 'BR.99990000111122223333',
+          },
+        ],
+        messages: [rawMessage],
+      }),
+    );
+    expect(events).toEqual([
+      {
+        kind: 'message_without_phone',
+        phoneNumberId: 'PN1',
+        dedupeKey: 'wamid.u2',
+        userId: 'BR.99990000111122223333',
+        username: 'bia',
+        profileName: 'Bia',
+        raw: rawMessage,
+      },
+    ]);
+  });
+
+  it('contato sem wa_id não invalida as demais mensagens da mesma alteração', () => {
+    const events = parseWebhookPayload(
+      messagesChange({
+        contacts: [
+          { profile: { name: 'Bia' }, user_id: 'BR.1' },
+          { profile: { name: 'Caio' }, wa_id: '5511888887777', user_id: 'BR.2' },
+        ],
+        messages: [
+          {
+            from_user_id: 'BR.1',
+            id: 'wamid.a',
+            timestamp: '1790000000',
+            type: 'text',
+            text: { body: 'a' },
+          },
+          {
+            from: '5511888887777',
+            from_user_id: 'BR.2',
+            id: 'wamid.b',
+            timestamp: '1790000000',
+            type: 'text',
+            text: { body: 'b' },
+          },
+        ],
+      }),
+    );
+    expect(events.map((event) => event.kind)).toEqual(['message_without_phone', 'message']);
+    expect(events[1]).toMatchObject({
+      contact: { waId: '5511888887777', profileName: 'Caio', userId: 'BR.2' },
+    });
+  });
+
+  it('status com BSUID e sem telefone do destinatário é normalizado', () => {
+    const events = parseWebhookPayload(
+      messagesChange({
+        statuses: [
+          {
+            id: 'wamid.s1',
+            status: 'delivered',
+            timestamp: '1790000000',
+            recipient_user_id: 'BR.99990000111122223333',
+            pricing: { billable: true, category: 'utility', pricing_model: 'PMP', type: 'regular' },
+          },
+        ],
+      }),
+    );
+    expect(events[0]).toMatchObject({
+      kind: 'status',
+      dedupeKey: 'wamid.s1:delivered',
+      status: {
+        status: 'delivered',
+        recipientUserId: 'BR.99990000111122223333',
+        pricing: { billable: true, category: 'utility', pricingModel: 'PMP', type: 'regular' },
+      },
+    });
+    expect(events[0]?.kind === 'status' && events[0].status.recipientId).toBeUndefined();
+  });
+
   it('normaliza mídia, localização e respostas interativas', () => {
     const payload = {
       object: 'whatsapp_business_account',

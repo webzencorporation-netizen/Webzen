@@ -1,9 +1,11 @@
 import {
   addUsage,
   emptyUsage,
+  type AIAttempt,
   type AIEffort,
   type AIMessage,
   type AIProvider,
+  type AIRefusal,
   type AISystemBlock,
   type AIUsage,
 } from './provider/types';
@@ -51,6 +53,13 @@ export interface AgentRunResult {
   usage: AIUsage;
   /** Modelos que responderam (em caso de fallback de recusa podem ser mais de um). */
   modelsUsed: string[];
+  /**
+   * Tentativas do provedor em todas as iterações, em ordem, incluindo as recusadas que
+   * precederam um fallback. `usage` soma somente as tentativas atendidas.
+   */
+  attempts: AIAttempt[];
+  /** Presente quando o turno terminou em recusa. */
+  refusal?: AIRefusal;
   iterations: number;
   toolCalls: ToolCallRecord[];
   effects: ToolEffects;
@@ -137,6 +146,7 @@ export class AgentEngine {
     const toolCalls: ToolCallRecord[] = [];
     const effects: ToolEffects = {};
     const modelsUsed = new Set<string>();
+    const attempts: AIAttempt[] = [];
     let usage = emptyUsage();
 
     for (let iteration = 1; iteration <= input.maxIterations; iteration += 1) {
@@ -150,17 +160,26 @@ export class AgentEngine {
       });
       usage = addUsage(usage, response.usage);
       modelsUsed.add(response.model);
+      attempts.push(...response.attempts);
 
       const base = {
         usage,
         modelsUsed: [...modelsUsed],
+        attempts,
         iterations: iteration,
         toolCalls,
         effects,
         stopReason: response.stopReason,
       };
 
-      if (response.stopReason === 'refusal') return { ...base, outcome: 'refused', text: '' };
+      if (response.stopReason === 'refusal') {
+        return {
+          ...base,
+          outcome: 'refused',
+          text: '',
+          ...(response.refusal ? { refusal: response.refusal } : {}),
+        };
+      }
 
       if (response.stopReason === 'tool_use' && response.toolCalls.length > 0) {
         messages.push({ role: 'assistant', raw: response.rawAssistantContent });
@@ -214,6 +233,7 @@ export class AgentEngine {
       text: '',
       usage,
       modelsUsed: [...modelsUsed],
+      attempts,
       iterations: input.maxIterations,
       toolCalls,
       effects,

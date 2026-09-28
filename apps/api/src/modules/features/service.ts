@@ -1,7 +1,7 @@
 import type { FeatureFlagKey } from '@botsaas/database';
 import { FEATURE_FLAGS, FeatureDisabledError } from '@botsaas/shared';
 import type { FastifyRequest } from 'fastify';
-import type { CompanyScope, TenantContext } from '../../context';
+import type { CompanyDataScope, CompanyScope } from '../../context';
 import { requireTenant } from '../../plugins/guards';
 
 const FEATURE_LABELS: Record<FeatureFlagKey, string> = {
@@ -15,7 +15,7 @@ const FEATURE_LABELS: Record<FeatureFlagKey, string> = {
 
 /** Recursos efetivos: recursos do plano + sobrescritas da empresa. Sem assinatura = recursos básicos. */
 export async function getEnabledFeatures(
-  scope: Pick<TenantContext, 'db'>,
+  scope: Pick<CompanyDataScope, 'db'>,
 ): Promise<Set<FeatureFlagKey>> {
   const [subscription, overrides] = await Promise.all([
     scope.db.subscription.findFirst({ include: { plan: { select: { features: true } } } }),
@@ -39,7 +39,7 @@ export async function describeFeatures(scope: CompanyScope) {
 }
 
 export async function assertFeature(
-  scope: Pick<TenantContext, 'db'>,
+  scope: Pick<CompanyDataScope, 'db'>,
   flag: FeatureFlagKey,
 ): Promise<void> {
   const enabled = await getEnabledFeatures(scope);

@@ -90,6 +90,8 @@ export interface InboundMedia {
 export interface InboundMessage {
   externalId: string;
   from: string;
+  /** BSUID (business-scoped user ID) do remetente, presente desde abr/2026. */
+  fromUserId?: string;
   timestamp: Date;
   type: MessageType;
   text?: string;
@@ -120,10 +122,20 @@ export type OutboundStatus = 'sent' | 'delivered' | 'read' | 'failed';
 export interface StatusUpdate {
   externalId: string;
   status: OutboundStatus;
+  /** Telefone do destinatário; a Meta o omite quando só o BSUID está disponível. */
   recipientId?: string;
+  recipientUserId?: string;
   timestamp: Date;
   errors?: WhatsAppErrorDetail[];
-  pricing?: { billable?: boolean; category?: string; pricingModel?: string };
+  pricing?: { billable?: boolean; category?: string; pricingModel?: string; type?: string };
+}
+
+/** Identificação do cliente no webhook. `userId` é o BSUID; `username`, o nome de usuário. */
+export interface WebhookContact {
+  waId: string;
+  profileName?: string;
+  userId?: string;
+  username?: string;
 }
 
 export type NormalizedWebhookEvent =
@@ -131,8 +143,22 @@ export type NormalizedWebhookEvent =
       kind: 'message';
       phoneNumberId: string;
       dedupeKey: string;
-      contact: { waId: string; profileName?: string };
+      contact: WebhookContact;
       message: InboundMessage;
+    }
+  /**
+   * Mensagem de usuário que adotou nome de usuário e não interagiu com o número da empresa
+   * nos últimos 30 dias: a Meta omite telefone (`from`/`wa_id`) e envia só o BSUID.
+   * Contatos são identificados por telefone, então o evento é retido para reprocessamento.
+   */
+  | {
+      kind: 'message_without_phone';
+      phoneNumberId: string;
+      dedupeKey: string;
+      userId?: string;
+      username?: string;
+      profileName?: string;
+      raw: unknown;
     }
   | { kind: 'status'; phoneNumberId: string; dedupeKey: string; status: StatusUpdate }
   | { kind: 'unsupported'; phoneNumberId?: string; dedupeKey: string; field: string; raw: unknown };

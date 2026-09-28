@@ -21,3 +21,10 @@ export * from './prompt';
 export * from './buffer';
 export * from './pricing';
 export * from './history';
+export {
+  runAnthropicHomologation,
+  type CheckStatus,
+  type HomologationCheck,
+  type HomologationOptions,
+  type HomologationReport,
+} from './homologation';

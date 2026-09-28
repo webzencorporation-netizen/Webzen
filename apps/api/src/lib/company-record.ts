@@ -1,5 +1,10 @@
-import { systemDb, type Prisma } from '@botsaas/database';
+import { systemDb, type CompanyStatus, type Prisma } from '@botsaas/database';
 import type { TenantContext } from '../context';
+
+/** ONBOARDING preserva a execução existente; suspensão/cancelamento bloqueiam novos turnos automáticos e envios. */
+export function isCompanyExecutionBlocked(status: CompanyStatus): boolean {
+  return status === 'SUSPENDED' || status === 'CANCELLED';
+}
 
 /**
  * Acesso ao registro `Company` da PRÓPRIA empresa do escopo. O modelo Company não tem

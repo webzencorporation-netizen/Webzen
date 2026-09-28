@@ -18,10 +18,10 @@ import type {
 import { AIProviderError, isOpenAt, type WeeklySchedule } from '@botsaas/shared';
 import type { AppContainer } from '../../container';
 import type { CompanyScope } from '../../context';
-import { getOwnCompany } from '../../lib/company-record';
+import { getOwnCompany, isCompanyExecutionBlocked } from '../../lib/company-record';
 import { recordError } from '../../lib/error-log';
 import { emitDomainEvent } from '../../lib/events';
-import { withLock } from '../../lib/locks';
+import { LockLeaseLostError, withLock, type LockLease } from '../../lib/locks';
 import { notify } from '../../lib/notifications';
 import { systemScope } from '../../lib/scope';
 import { getEnabledFeatures } from '../features/service';
@@ -31,7 +31,7 @@ import { scheduleAgentReply } from '../messaging/schedule';
 import { checkAiAllowance } from '../usage/limits';
 import { buildPromptInput, loadHistory } from './context';
 import { costFor } from './pricing';
-import { agentToolRegistry } from './tools';
+import { agentToolRegistry, type AgentToolContext } from './tools';
 
 export const DEFAULT_HANDOFF_MESSAGE =
   'Vou encaminhar seu atendimento para alguém da nossa equipe. Em breve você será respondido(a).';
@@ -41,6 +41,12 @@ export const DEFAULT_OUT_OF_HOURS_MESSAGE =
   'Olá! No momento estamos fora do horário de atendimento. Retornaremos assim que possível.';
 
 const LOCK_TTL_MS = 180_000;
+class CompanyExecutionBlockedError extends Error {
+  constructor() {
+    super('Execução automática bloqueada: empresa suspensa ou cancelada.');
+    this.name = 'CompanyExecutionBlockedError';
+  }
+}
 const MEDIA_WAIT_MS = 90_000;
 const MAX_IMAGES_PER_TURN = 3;
 const MAX_IMAGE_BYTES = 3_750_000;
@@ -152,9 +158,10 @@ export async function executeAgentTurn(
     pending: PendingMessage[];
     trigger: AgentRunTrigger;
     dryRun: boolean;
+    lease?: LockLease;
   },
 ): Promise<AgentTurnOutput> {
-  const { conversation, config, pending } = input;
+  const { conversation, config, pending, lease } = input;
   const { container } = scope;
   const model = config.model ?? container.env.AI_DEFAULT_MODEL;
   const currentText = groupInboundMessages(toHistoryMessages(pending));
@@ -170,6 +177,10 @@ export async function executeAgentTurn(
     loadImages(scope, pending),
     enabledToolNames(scope),
   ]);
+  // Preparação de contexto/mídia pode demorar; o teste manual continua explícito.
+  if (!input.dryRun && isCompanyExecutionBlocked((await getOwnCompany(scope)).status))
+    throw new CompanyExecutionBlockedError();
+  lease?.assertOwned();
 
   const agentRun = await scope.db.agentRun.create({
     data: {
@@ -186,12 +197,31 @@ export async function executeAgentTurn(
   const started = Date.now();
   let result: AgentRunResult;
   try {
-    result = await AgentEngine.run({
+    if (!input.dryRun && isCompanyExecutionBlocked((await getOwnCompany(scope)).status))
+      throw new CompanyExecutionBlockedError();
+    lease?.assertOwned();
+    result = await AgentEngine.run<AgentToolContext>({
       provider: container.providers.ai,
       model,
       system: composeSystemPrompt(prompt),
       messages: [...history.messages, userTurn(currentText || '[mensagem sem texto]', images)],
-      tools: agentToolRegistry.resolve(toolNames),
+      tools: agentToolRegistry.resolve(toolNames).map((tool) => ({
+        ...tool,
+        handler: async (data, context, meta) => {
+          try {
+            lease?.assertOwned();
+          } catch {
+            // Retornar o bloqueio permite ao engine preservar o uso já acumulado.
+            // Tools em voo não são canceladas; nenhuma nova entra no handler sem posse.
+            return {
+              ok: false as const,
+              code: 'lease_lost',
+              error: 'Execução interrompida: posse da conversa perdida.',
+            };
+          }
+          return tool.handler(data, context, meta);
+        },
+      })),
       toolContext: { scope, conversationId: conversation.id, contactId: conversation.contactId },
       maxIterations: config.maxToolIterations,
       maxOutputTokens: config.maxOutputTokens,
@@ -211,8 +241,18 @@ export async function executeAgentTurn(
     await scope.db.agentRun.update({
       where: { id: agentRun.id },
       data: {
-        status: 'FAILED',
-        errorCode: error instanceof AIProviderError ? error.code : 'internal_error',
+        status:
+          error instanceof LockLeaseLostError || error instanceof CompanyExecutionBlockedError
+            ? 'SKIPPED'
+            : 'FAILED',
+        errorCode:
+          error instanceof CompanyExecutionBlockedError
+            ? 'company_execution_blocked'
+            : error instanceof LockLeaseLostError
+              ? 'lease_lost'
+              : error instanceof AIProviderError
+                ? error.code
+                : 'internal_error',
         errorMessage: (error instanceof Error ? error.message : 'erro').slice(0, 500),
         durationMs: Date.now() - started,
         finishedAt: new Date(),
@@ -233,6 +273,7 @@ export async function executeAgentTurn(
     result.outcome === 'refused' ||
     result.outcome === 'max_iterations' ||
     (result.outcome === 'truncated' && !result.text);
+  logProviderSignals(scope, agentRun.id, result);
   const knowledgeHits = knowledge.map((hit) => ({
     id: hit.id,
     title: hit.title,
@@ -255,6 +296,10 @@ export async function executeAgentTurn(
       durationMs,
       estimatedCostUsd: costUsd,
       errorCode: failedOutcome ? result.outcome : null,
+      errorMessage:
+        result.outcome === 'refused'
+          ? `Recusa do provedor de IA (categoria: ${result.refusal?.category ?? 'não informada'}).`
+          : null,
       finishedAt: new Date(),
     },
   });
@@ -285,7 +330,50 @@ export async function executeAgentTurn(
   };
 }
 
-async function markHandled(scope: CompanyScope, messageIds: string[], agentRunId?: string) {
+/**
+ * Recusas e fallbacks chegam como HTTP 200: sem este registro, monitoramento baseado em
+ * erros não os enxerga. Tentativas recusadas antes do fallback ainda não entram no custo
+ * estimado (ver docs/COST_ACCOUNTING_PLAN.md).
+ */
+function logProviderSignals(scope: CompanyScope, agentRunId: string, result: AgentRunResult) {
+  const fallbackAttempts = result.attempts.filter((attempt) => attempt.fallback);
+  if (fallbackAttempts.length > 0) {
+    scope.container.logger.info(
+      {
+        companyId: scope.companyId,
+        agentRunId,
+        attempts: result.attempts.map(({ model, served, fallback, usage }) => ({
+          model,
+          served,
+          fallback,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        })),
+      },
+      'IA atendida por modelo de fallback após recusa',
+    );
+  }
+  if (result.outcome === 'refused') {
+    scope.container.logger.warn(
+      {
+        companyId: scope.companyId,
+        agentRunId,
+        category: result.refusal?.category ?? null,
+        recommendedModel: result.refusal?.recommendedModel ?? null,
+        models: result.modelsUsed,
+      },
+      'IA recusou a solicitação',
+    );
+  }
+}
+
+async function markHandled(
+  scope: CompanyScope,
+  messageIds: string[],
+  agentRunId?: string,
+  lease?: LockLease,
+) {
+  lease?.assertOwned();
   if (messageIds.length === 0) return;
   await scope.db.message.updateMany({
     where: { id: { in: messageIds } },
@@ -299,8 +387,11 @@ async function applyFallback(
   conversationId: string,
   config: AIConfiguration,
   reason: string,
+  lease?: LockLease,
 ) {
+  lease?.assertOwned();
   if (config.fallbackBehavior === 'SEND_FALLBACK_MESSAGE') {
+    lease?.assertOwned();
     await queueOutboundText(scope, {
       conversationId,
       text: config.fallbackMessage ?? DEFAULT_FALLBACK_MESSAGE,
@@ -309,15 +400,18 @@ async function applyFallback(
   }
   if (config.fallbackBehavior === 'HANDOFF_TO_HUMAN') {
     if (config.handoffMessage) {
+      lease?.assertOwned();
       await queueOutboundText(scope, {
         conversationId,
         text: config.handoffMessage,
         sender: 'SYSTEM',
       }).catch(() => undefined);
     }
+    lease?.assertOwned();
     await requestHandoff(scope, conversationId, { requestedBy: 'SYSTEM', reason });
     return;
   }
+  lease?.assertOwned();
   await scope.db.conversation.update({
     where: { id: conversationId },
     data: { needsAttention: true, attentionReason: reason.slice(0, 300) },
@@ -328,6 +422,43 @@ export type AgentJobOutcome =
   'responded' | 'handoff' | 'fallback' | 'rescheduled' | 'skipped' | 'locked';
 
 /**
+ * Revalida a autorização para responder; o snapshot anterior à chamada de IA pode ter
+ * sido revogado pelo operador. Não desfaz tools já executadas nem cancela o provider.
+ */
+async function loadAutomaticReplyContext(
+  scope: CompanyScope,
+  conversationId: string,
+  pendingIds?: string[],
+) {
+  if (isCompanyExecutionBlocked((await getOwnCompany(scope)).status)) return null;
+  const conversation = await scope.db.conversation.findUnique({
+    where: { id: conversationId },
+    include: { contact: true },
+  });
+  if (
+    !conversation ||
+    conversation.mode !== 'AI' ||
+    conversation.status !== 'OPEN' ||
+    conversation.channel !== 'WHATSAPP' ||
+    conversation.contact.optedOut
+  )
+    return null;
+
+  const config = await scope.db.aIConfiguration.findFirst();
+  if (!config?.enabled) return null;
+
+  if (pendingIds) {
+    // Devolver atendimento humano/retomar pausa marca entradas como tratadas. Mesmo que
+    // o modo já seja AI outra vez, o resultado antigo não pode respondê-las novamente.
+    const pending = await scope.db.message.count({
+      where: { id: { in: pendingIds }, conversationId, direction: 'INBOUND', agentHandledAt: null },
+    });
+    if (pending !== pendingIds.length) return null;
+  }
+  return { conversation, config };
+}
+
+/**
  * Processa o job `agent.reply` de uma conversa (debounce, limites, horário, agente, envio).
  * Idempotente: só considera mensagens de entrada ainda não tratadas.
  */
@@ -335,15 +466,13 @@ export async function runConversationTurn(
   scope: CompanyScope,
   conversationId: string,
   attempt: { attemptsMade: number; maxAttempts: number; jobId?: string },
+  lease?: LockLease,
 ): Promise<AgentJobOutcome> {
-  const conversation = await scope.db.conversation.findUnique({
-    where: { id: conversationId },
-    include: { contact: true },
-  });
-  if (!conversation || conversation.mode !== 'AI' || conversation.channel !== 'WHATSAPP')
-    return 'skipped';
-  const config = await scope.db.aIConfiguration.findFirst();
-  if (!config?.enabled) return 'skipped';
+  lease?.assertOwned();
+  const initial = await loadAutomaticReplyContext(scope, conversationId);
+  if (!initial) return 'skipped';
+  const { conversation } = initial;
+  let { config } = initial;
 
   const pending = await scope.db.message.findMany({
     where: { conversationId, direction: 'INBOUND', agentHandledAt: null },
@@ -356,6 +485,7 @@ export async function runConversationTurn(
   const now = new Date();
   const decision = decideBufferAction({ pending, bufferSeconds: config.messageBufferSeconds, now });
   if (decision.action === 'wait') {
+    lease?.assertOwned();
     await scheduleAgentReply(scope, conversationId, decision.delayMs);
     return 'rescheduled';
   }
@@ -367,6 +497,7 @@ export async function runConversationTurn(
     ),
   );
   if (mediaProcessing) {
+    lease?.assertOwned();
     await scheduleAgentReply(scope, conversationId, 2_000);
     return 'rescheduled';
   }
@@ -374,6 +505,7 @@ export async function runConversationTurn(
 
   const allowance = await checkAiAllowance(scope, now);
   if (!allowance.allowed) {
+    lease?.assertOwned();
     await notify(scope, {
       type: 'USAGE_LIMIT_REACHED',
       severity: 'CRITICAL',
@@ -385,8 +517,9 @@ export async function runConversationTurn(
       conversationId,
       { ...config, fallbackBehavior: 'HANDOFF_TO_HUMAN' },
       allowance.reason ?? 'Limite de uso atingido',
+      lease,
     );
-    await markHandled(scope, pendingIds);
+    await markHandled(scope, pendingIds, undefined, lease);
     return 'fallback';
   }
 
@@ -406,13 +539,15 @@ export async function runConversationTurn(
           createdAt: { gte: new Date(now.getTime() - 12 * 3600_000) },
         },
       });
+      lease?.assertOwned();
       if (!recent) await queueOutboundText(scope, { conversationId, text, sender: 'SYSTEM' });
-      await markHandled(scope, pendingIds);
+      await markHandled(scope, pendingIds, undefined, lease);
       return 'fallback';
     }
   }
 
   let output: AgentTurnOutput;
+  lease?.assertOwned();
   try {
     output = await executeAgentTurn(scope, {
       conversation,
@@ -420,16 +555,27 @@ export async function runConversationTurn(
       pending,
       trigger: 'INBOUND_MESSAGE',
       dryRun: false,
+      lease,
     });
   } catch (error) {
+    // Perda de posse é infraestrutura; não vira falha/fallback da IA.
+    lease?.assertOwned();
+    if (error instanceof CompanyExecutionBlockedError) return 'skipped';
+    // executeAgentTurn já registrou a falha. Pausa/posse humana não deve disparar
+    // retentativa, fallback ou alterações na conversa a partir de um turno obsoleto.
+    const current = await loadAutomaticReplyContext(scope, conversationId, pendingIds);
+    if (!current) return 'skipped';
+    config = current.config;
     const retryable = error instanceof AIProviderError ? error.retryable : true;
     if (retryable && attempt.attemptsMade + 1 < attempt.maxAttempts) throw error;
     // Falha definitiva: não inventamos resposta. Marca a conversa e aciona o fallback.
     const reason = error instanceof Error ? error.message : 'Falha no agente';
+    lease?.assertOwned();
     await scope.db.conversation.update({
       where: { id: conversationId },
       data: { aiFailureCount: { increment: 1 } },
     });
+    lease?.assertOwned();
     await recordError({
       source: 'AI',
       code: error instanceof AIProviderError ? error.code : 'agent_failed',
@@ -438,6 +584,7 @@ export async function runConversationTurn(
       conversationId,
       jobId: attempt.jobId,
     });
+    lease?.assertOwned();
     await notify(scope, {
       type: 'AGENT_FAILED',
       severity: 'CRITICAL',
@@ -445,46 +592,65 @@ export async function runConversationTurn(
       body: reason,
       link: `/app/conversations/${conversationId}`,
     });
+    lease?.assertOwned();
     await emitDomainEvent(scope, 'agent.failed', { conversationId, reason });
-    await applyFallback(scope, conversationId, config, 'Falha do atendente virtual');
-    await markHandled(scope, pendingIds);
+    await applyFallback(scope, conversationId, config, 'Falha do atendente virtual', lease);
+    await markHandled(scope, pendingIds, undefined, lease);
     return 'fallback';
   }
+
+  lease?.assertOwned();
+  // AgentRun e consumo do trabalho realizado permanecem registrados mesmo que a
+  // resposta seja descartada. Entradas pausadas continuam pendentes.
+  const current = await loadAutomaticReplyContext(scope, conversationId, pendingIds);
+  if (!current) return 'skipped';
+  config = current.config;
 
   const { result } = output;
   if (result.outcome === 'refused' || result.outcome === 'max_iterations' || !result.text.trim()) {
     if (result.effects.handoff) {
+      lease?.assertOwned();
       await queueOutboundText(scope, {
         conversationId,
         text: config.handoffMessage ?? DEFAULT_HANDOFF_MESSAGE,
         sender: 'AI',
         agentRunId: output.agentRunId,
       });
+      lease?.assertOwned();
       await requestHandoff(scope, conversationId, {
         requestedBy: 'AI',
         reason: result.effects.handoff.reason,
       });
-      await markHandled(scope, pendingIds, output.agentRunId);
+      await markHandled(scope, pendingIds, output.agentRunId, lease);
       return 'handoff';
     }
-    await applyFallback(scope, conversationId, config, `Agente sem resposta (${result.outcome})`);
-    await markHandled(scope, pendingIds, output.agentRunId);
+    await applyFallback(
+      scope,
+      conversationId,
+      config,
+      `Agente sem resposta (${result.outcome})`,
+      lease,
+    );
+    await markHandled(scope, pendingIds, output.agentRunId, lease);
     return 'fallback';
   }
 
+  lease?.assertOwned();
   await queueOutboundText(scope, {
     conversationId,
     text: result.text.trim(),
     sender: 'AI',
     agentRunId: output.agentRunId,
   });
-  await markHandled(scope, pendingIds, output.agentRunId);
+  await markHandled(scope, pendingIds, output.agentRunId, lease);
+  lease?.assertOwned();
   await scope.db.conversation.update({
     where: { id: conversationId },
     data: { aiFailureCount: 0 },
   });
 
   if (result.effects.handoff) {
+    lease?.assertOwned();
     await requestHandoff(scope, conversationId, {
       requestedBy: 'AI',
       reason: result.effects.handoff.reason,
@@ -496,8 +662,9 @@ export async function runConversationTurn(
   const newer = await scope.db.message.count({
     where: { conversationId, direction: 'INBOUND', agentHandledAt: null },
   });
+  lease?.assertOwned();
   if (newer > 0) await scheduleAgentReply(scope, conversationId);
-  await maybeScheduleSummary(scope, conversationId, config);
+  await maybeScheduleSummary(scope, conversationId, config, lease);
   return 'responded';
 }
 
@@ -505,6 +672,7 @@ async function maybeScheduleSummary(
   scope: CompanyScope,
   conversationId: string,
   config: AIConfiguration,
+  lease?: LockLease,
 ) {
   const summary = await scope.db.conversationSummary.findFirst({
     where: { conversationId },
@@ -518,6 +686,7 @@ async function maybeScheduleSummary(
     },
   });
   if (count > config.summaryThreshold) {
+    lease?.assertOwned();
     await scope.container.queue.enqueue(
       'conversation.summarize',
       { companyId: scope.companyId, conversationId, reason: 'threshold' },
@@ -526,7 +695,7 @@ async function maybeScheduleSummary(
   }
 }
 
-/** Entrada do job `agent.reply`, com lock por conversa para nunca responder em paralelo. */
+/** Entrada do job `agent.reply`, com lease por conversa e verificação antes dos efeitos. */
 export async function handleAgentReplyJob(
   container: AppContainer,
   payload: { companyId: string; conversationId: string },
@@ -540,7 +709,7 @@ export async function handleAgentReplyJob(
     container.redis,
     `conversation:${payload.conversationId}`,
     LOCK_TTL_MS,
-    () => runConversationTurn(scope, payload.conversationId, attempt),
+    (lease) => runConversationTurn(scope, payload.conversationId, attempt, lease),
   );
   if (outcome === null) {
     await scheduleAgentReply(scope, payload.conversationId, 3_000);

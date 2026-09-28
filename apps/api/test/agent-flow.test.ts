@@ -267,6 +267,20 @@ describe('fluxo do agente', () => {
     );
   });
 
+  it('recusa do classificador: registra a categoria na execução, sem resposta da IA', async () => {
+    const company = await setupClinic();
+    harness.ai.enqueue({ refusal: true, category: 'cyber' });
+    await receive('oi, tudo bem?');
+    await drainJobs(harness, { only: ['agent.reply', 'message.send'] });
+
+    const run = await systemDb.agentRun.findFirstOrThrow({ where: { companyId: company.id } });
+    expect(run).toMatchObject({ status: 'FAILED', errorCode: 'refused', stopReason: 'refusal' });
+    expect(run.errorMessage).toBe('Recusa do provedor de IA (categoria: cyber).');
+    expect(await systemDb.message.count({ where: { companyId: company.id, sender: 'AI' } })).toBe(
+      0,
+    );
+  });
+
   it('falha temporária da IA: a mensagem não se perde e o job é repetido', async () => {
     await setupClinic();
     harness.ai.enqueue({ error: new AIProviderError('overloaded', { retryable: true }) });

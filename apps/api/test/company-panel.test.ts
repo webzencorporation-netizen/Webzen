@@ -100,6 +100,14 @@ describe('painel da empresa', () => {
     const admin = await login(harness.app, 'gerente@c.com', invited.json().temporaryPassword);
     expect(
       (
+        await admin.post('/api/auth/change-password', {
+          currentPassword: invited.json().temporaryPassword,
+          newPassword: 'senha-definitiva-gerente-123',
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
         await admin.post('/api/app/team', {
           email: 'outro-dono@c.com',
           name: 'Xavier',

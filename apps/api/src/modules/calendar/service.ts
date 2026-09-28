@@ -1,11 +1,13 @@
 import type { AppointmentStatus, Prisma } from '@botsaas/database';
 import {
   GoogleCalendarProvider,
+  GoogleReauthorizationRequiredError,
   type CalendarProvider,
   type GoogleTokens,
 } from '@botsaas/integrations';
 import {
   ConflictError,
+  IntegrationError,
   NotFoundError,
   ValidationError,
   type WeeklySchedule,
@@ -15,6 +17,7 @@ import type { CompanyScope } from '../../context';
 import { audit } from '../../lib/audit';
 import { getOwnCompany } from '../../lib/company-record';
 import { emitDomainEvent } from '../../lib/events';
+import { notify } from '../../lib/notifications';
 import { computeAvailableSlots, type Interval } from './availability';
 
 export const DEFAULT_DURATION_MINUTES = 30;
@@ -25,37 +28,64 @@ const appointmentInclude = {
   service: { select: { id: true, name: true, durationMinutes: true } },
 } satisfies Prisma.AppointmentInclude;
 
-/** Provider externo conectado (Google) ou null quando só a agenda interna está ativa. */
+/**
+ * Provider externo conectado (Google) ou null quando só a agenda interna está ativa.
+ * Uma integração que deveria bloquear horários, mas não pode ser usada, recusa a consulta:
+ * ignorá-la permitiria marcar por cima de compromissos do Google.
+ */
 export async function getCalendarProvider(
   scope: CompanyScope,
 ): Promise<{ provider: CalendarProvider; integrationId: string } | null> {
   const integration = await scope.db.integration.findFirst({
-    where: { provider: 'GOOGLE_CALENDAR', status: 'CONNECTED' },
+    where: { provider: 'GOOGLE_CALENDAR', status: { in: ['CONNECTED', 'ERROR'] } },
   });
-  const { env, secrets } = scope.container;
-  if (
-    !integration?.credentialsEncrypted ||
-    !secrets ||
-    !env.GOOGLE_CLIENT_ID ||
-    !env.GOOGLE_CLIENT_SECRET ||
-    !env.GOOGLE_REDIRECT_URI
-  ) {
-    return null;
+  if (!integration) return null;
+  if (integration.status === 'ERROR') {
+    throw new IntegrationError(
+      'Google Agenda desconectada por falha de autorização — reconecte em Integrações para voltar a consultar horários.',
+    );
   }
-  const tokens = JSON.parse(secrets.decrypt(integration.credentialsEncrypted)) as GoogleTokens;
+  const { secrets } = scope.container;
+  const { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: clientSecret } = scope.container.env;
+  const redirectUri = scope.container.env.GOOGLE_REDIRECT_URI;
+  const credentials = integration.credentialsEncrypted;
+  if (!credentials || !secrets || !clientId || !clientSecret || !redirectUri) {
+    const missing = [
+      !credentials && 'credenciais da integração',
+      !secrets && 'ENCRYPTION_KEY',
+      !clientId && 'GOOGLE_CLIENT_ID',
+      !clientSecret && 'GOOGLE_CLIENT_SECRET',
+      !redirectUri && 'GOOGLE_REDIRECT_URI',
+    ].filter(Boolean);
+    throw new IntegrationError(
+      `Google Agenda conectada, mas indisponível nesta instalação (ausente: ${missing.join(', ')}).`,
+    );
+  }
+  const tokens = JSON.parse(secrets.decrypt(credentials)) as GoogleTokens;
   const config = (integration.config ?? {}) as { calendarId?: string };
   const provider = new GoogleCalendarProvider({
-    oauth: {
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-      redirectUri: env.GOOGLE_REDIRECT_URI,
-    },
+    oauth: { clientId, clientSecret, redirectUri },
     tokens,
     calendarId: config.calendarId,
     onTokensRefreshed: async (refreshed) => {
       await scope.db.integration.update({
         where: { id: integration.id },
         data: { credentialsEncrypted: secrets.encrypt(JSON.stringify(refreshed)) },
+      });
+    },
+    onReauthorizationRequired: async () => {
+      // Só a transição CONNECTED → ERROR notifica; consultas seguintes recusam antes da rede.
+      const { count } = await scope.db.integration.updateMany({
+        where: { id: integration.id, status: 'CONNECTED' },
+        data: { status: 'ERROR', lastError: new GoogleReauthorizationRequiredError().message },
+      });
+      if (count === 0) return;
+      await notify(scope, {
+        type: 'INTEGRATION_DISCONNECTED',
+        severity: 'CRITICAL',
+        title: 'Google Agenda desconectada',
+        body: 'A autorização do Google expirou ou foi revogada. Reconecte para o agente voltar a consultar e marcar horários.',
+        link: '/app/integrations',
       });
     },
   });
