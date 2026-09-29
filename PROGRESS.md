@@ -162,6 +162,11 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Bug encontrado pelo teste de virada de dia: o adapter-pg gravava datas deslocadas quando o Postgres não está em UTC (local herdava `America/Santiago`). Sessão agora sempre em UTC; teste reproduz com o banco configurado fora de UTC. Dados locais antigos ficam deslocados — reseedar o banco de desenvolvimento.
   - 5 testes novos (agrupamento, fuso, isolamento entre clientes, validação de período, permissão, fuso do banco). Lint, typecheck e suíte completa verdes (511 testes).
 
+- **Recuperação de respostas travadas (2026-09-29, D-032)**
+  - Job `agent.recover-stalled` a cada 5 min: reagenda `agent.reply` para conversas em modo IA com mensagem do cliente pendente entre 10 min e 6 h; depois de 3 execuções sem resolver, passa para humano (nota + notificação) e para de tentar.
+  - Mensagens de saída com falha continuam sem reenvio automático (D-020).
+  - 4 testes novos (recuperação ponta a ponta, filtros, limite com handoff único, várias empresas). Lint, typecheck e suíte completa verdes (515 testes).
+
 ## Em andamento
 
 - Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
