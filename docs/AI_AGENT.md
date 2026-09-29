@@ -36,7 +36,7 @@ O [provider Meta](../packages/ai/src/provider/meta.ts) (`AI_PROVIDER=meta`, D-02
 - `max_tokens` mínimo 16. Modelo inexistente responde 404 (não repetido pelo runner).
 - Cache de prompt é automático (`cache_read_input_tokens`), sem marcação.
 - Streaming funciona no SDK, mas o atendimento não usa streaming: a mensagem do WhatsApp é enviada inteira.
-- Latência observada: 15–18 s por turno com 2–3 chamadas de ferramenta (effort `medium`).
+- Latência observada: 15–28 s por turno com 2–4 chamadas de ferramenta em `medium` (até ~55 s ao criar agendamento). Em `low`, 13–24 s com qualidade equivalente no roteiro de agendamento; é o nível recomendado para WhatsApp com este provider. O painel acessa a API por rewrite do Next com `proxyTimeout` de 180 s. O padrão de 30 s devolvia 500 no Testar agente em turnos longos.
 
 O catálogo do painel mostra apenas os modelos do provedor ativo. Se uma empresa tiver salvo um modelo de outro provedor (ex.: `claude-opus-5` depois de trocar para `meta`), o runner, o resumo e o painel usam `AI_DEFAULT_MODEL` em vez de falhar. O modelo salvo não é apagado ([models/service.ts](../apps/api/src/modules/models/service.ts)).
 

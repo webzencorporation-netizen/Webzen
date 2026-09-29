@@ -146,6 +146,12 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Fluxo WhatsApp pelo simulador (mesma ingestão do webhook; `WHATSAPP_PROVIDER=mock`): worker executou `muse-spark-1.3`/`meta`, 3 tools (horário, catálogo, qualificação), resposta enviada pelo provider mock, US$ 0,019, 16,6 s. A Clínica Demo tinha `claude-opus-5` salvo e caiu corretamente no modelo padrão da Meta.
   - Chave somente no `.env` (ignorado): ausente de arquivos versionados/novos, histórico git, bundle `.next`, logs de API/worker/painel e respostas da API. Testes da API agora fixam modelo e esvaziam chaves reais (não dependem do `.env` local).
 
+- **Qualidade das respostas com Muse Spark (2026-09-29)**
+  - Conversa real do responsável às 3h mostrou autocorreção ("amanhã, digo, hoje"), confirmação repetitiva e concordância errada ("agendado sua limpeza").
+  - Prompt: o contexto passa a trazer "Hoje/Amanhã/Próximos dias" calculados no fuso da empresa; regras de mensagem final revisada (sem autocorreção), português com concordância e confirmação em uma frase; ao concluir uma ação, só informação dos dados da empresa ou das ferramentas (o modelo tinha inventado "chegue 10 minutos antes").
+  - Bug do painel: o rewrite do Next corta em 30 s (`proxyTimeout`), e o Testar agente devolvia 500 em turnos longos do Muse Spark. Ajustado para 180 s (= lease do turno). O WhatsApp (worker) não era afetado.
+  - Mesma conversa com a API real depois do ajuste: sem autocorreção, confirmação "Fechado: limpeza de pele hoje, terça 29/09, às 09:00. Posso confirmar?", agendamento confirmado só com dados reais. Tempo por turno: `medium` ≈ 27 s / 25 s / ~55 s; `low` ≈ 20 s / 13–17 s / 16–24 s, com qualidade equivalente e custo semelhante (~US$ 0,02–0,03 por turno). A Clínica Demo foi mantida em `medium`.
+
 ## Em andamento
 
 - Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.

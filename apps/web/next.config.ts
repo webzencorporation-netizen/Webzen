@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@botsaas/shared'],
+  experimental: {
+    // O proxy do rewrite corta em 30 s por padrão (500 no painel). Um turno do agente com
+    // raciocínio e várias tools passa disso (Testar agente); 180 s = lease do turno no runner.
+    proxyTimeout: 180_000,
+  },
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` }];
   },
