@@ -30,8 +30,15 @@ export interface AiConfig {
 
 export interface AiSettings {
   config: AiConfig;
-  tools: { name: string; label: string; category: string; mutating: boolean; enabled: boolean; recommended: boolean }[];
+  tools: {
+    name: string;
+    label: string;
+    category: string;
+    mutating: boolean;
+    enabled: boolean;
+    recommended: boolean;
+  }[];
   models: { id: string; name: string }[];
   defaultModel: string;
-  provider: 'anthropic' | 'mock';
+  provider: 'anthropic' | 'meta' | 'mock';
 }

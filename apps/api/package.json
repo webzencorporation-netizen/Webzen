@@ -16,6 +16,7 @@
     "test:build": "tsx scripts/check-build.ts",
     "homolog:anthropic": "tsx --env-file-if-exists=../../.env scripts/homolog-anthropic.ts",
     "homolog:whatsapp": "tsx --env-file-if-exists=../../.env scripts/homolog-whatsapp.ts",
+    "homolog:meta": "tsx --env-file-if-exists=../../.env scripts/homolog-meta.ts",
     "test:watch": "vitest",
     "seed": "tsx --env-file-if-exists=../../.env src/seed/run.ts"
   },

@@ -29,6 +29,7 @@ import { requestHandoff } from '../messaging/handoff';
 import { queueOutboundText } from '../messaging/outbound';
 import { scheduleAgentReply } from '../messaging/schedule';
 import { checkAiAllowance } from '../usage/limits';
+import { effectiveModel } from '../models/service';
 import { buildPromptInput, loadHistory } from './context';
 import { costFor } from './pricing';
 import { agentToolRegistry, type AgentToolContext } from './tools';
@@ -163,7 +164,7 @@ export async function executeAgentTurn(
 ): Promise<AgentTurnOutput> {
   const { conversation, config, pending, lease } = input;
   const { container } = scope;
-  const model = config.model ?? container.env.AI_DEFAULT_MODEL;
+  const model = effectiveModel(config.model, container.env);
   const currentText = groupInboundMessages(toHistoryMessages(pending));
 
   const [{ prompt, knowledge }, history, images, toolNames] = await Promise.all([

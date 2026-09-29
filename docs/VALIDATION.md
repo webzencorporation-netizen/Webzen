@@ -74,11 +74,12 @@ São seis fluxos desktop completos (login, proteção de rotas, mensagem/IA/hand
 
 ## Homologação com credenciais reais
 
-Os testes de contrato exercitam os SDKs/clientes reais contra servidores e respostas locais: Anthropic em `packages/ai/test/anthropic-provider.test.ts`, Cloud API em `packages/whatsapp/test/cloud-api.test.ts`. A primeira etapa da homologação real é automatizada e não usa banco nem Redis:
+Os testes de contrato exercitam os SDKs/clientes reais contra servidores e respostas locais: Anthropic em `packages/ai/test/anthropic-provider.test.ts`, Meta Model API em `packages/ai/test/meta-provider.test.ts`, Cloud API em `packages/whatsapp/test/cloud-api.test.ts`. A primeira etapa da homologação real é automatizada e não usa banco nem Redis:
 
 | Comando                                     | Requer                                                         | Custo/efeito                                                      |
 | ------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `pnpm homolog:anthropic [--cache]`          | `ANTHROPIC_API_KEY`, `AI_DEFAULT_MODEL` (e `AI_SUMMARY_MODEL`) | Poucas chamadas pequenas e pagas; `--cache` soma ~12 mil tokens   |
+| `pnpm homolog:meta`                         | `META_MODEL_API_KEY`, `AI_DEFAULT_MODEL=muse-spark-1.3`        | ~20 chamadas pequenas e pagas (~US$ 0,01); inclui erros 401/404   |
 | `pnpm homolog:whatsapp [--send-to=<teste>]` | `HOMOLOG_WA_ACCESS_TOKEN`, `HOMOLOG_WA_PHONE_NUMBER_ID`, WABA  | Somente leitura; `--send-to` envia um template ao número de teste |
 
 Cada comando imprime um relatório sem segredos e sai com código 1 se alguma verificação falhar. As etapas seguintes (cenários de negócio) estão em [AI_AGENT.md](AI_AGENT.md) e [WHATSAPP.md](WHATSAPP.md).

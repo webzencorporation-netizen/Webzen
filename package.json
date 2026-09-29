@@ -23,6 +23,7 @@
     "test:build": "pnpm --filter @botsaas/api run test:build",
     "homolog:anthropic": "pnpm --filter @botsaas/api run homolog:anthropic",
     "homolog:whatsapp": "pnpm --filter @botsaas/api run homolog:whatsapp",
+    "homolog:meta": "pnpm --filter @botsaas/api run homolog:meta",
     "db:generate": "pnpm --filter @botsaas/database run generate",
     "db:migrate": "pnpm --filter @botsaas/database run migrate:dev",
     "db:migrate:deploy": "pnpm --filter @botsaas/database run migrate:deploy",

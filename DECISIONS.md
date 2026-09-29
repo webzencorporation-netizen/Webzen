@@ -233,3 +233,18 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - `S3_ENDPOINT` definido implica `requestChecksumCalculation`/`responseChecksumValidation` = `WHEN_REQUIRED`; AWS S3 mantém as proteções padrão.
 
 **Limites:** a reconexão continua manual pelo painel. O job de espelhamento falha enquanto a integração estiver em `ERROR` e não reexecuta sozinho após reconectar. A homologação real de Google e S3 continua pendente de credenciais.
+
+## D-028 — Meta Model API (Muse Spark) como provider próprio sobre o formato Messages
+
+**Contexto:** em 2026-09-29 o responsável não conseguiu adicionar créditos na Anthropic (a verificação de identidade falhou) e optou pela IA oficial da Meta. A antiga Llama API foi desativada em julho/2026; a oferta atual é a [Meta Model API](https://dev.meta.ai/docs/overview), com modelos Muse Spark e endpoints compatíveis com os SDKs da OpenAI e da Anthropic. Sondagens na API real com `muse-spark-1.3` confirmaram: Messages API em `https://api.meta.ai` com texto, imagens, tools (inclusive paralelas) e `tool_result` com `is_error`; autenticação Bearer (`x-api-key` é recusado em `/v1/models`); raciocínio obrigatório (`thinking: disabled` → 400) contado em `max_tokens`/`output_tokens`; `output_config.effort` `low`/`medium`/`high`; `tool_choice` só `auto`; `max_tokens` ≥ 16; blocos `redacted_thinking`; cache automático.
+
+**Decisão:**
+
+- `AI_PROVIDER=meta` cria `MetaModelProvider` (`packages/ai/src/provider/meta.ts`). Ele reaproveita do adapter Anthropic a tradução de mensagens, respostas e erros (`toAnthropicMessages`, `toAIResponse`, `mapProviderError` com o nome do fornecedor), mas é um provider separado que não envia `fallbacks`/beta nem `cache_control`. O comportamento do `AnthropicProvider` não muda.
+- O cliente do SDK usa `apiKey: null` + `authToken`, para nunca ler nem enviar `ANTHROPIC_API_KEY` do ambiente à Meta (coberto por teste).
+- Sempre envia `effort` (padrão `medium`) e soma uma folga de raciocínio a `maxOutputTokens` (2.048/4.096/8.192 por nível). Sem isso, o padrão de 1.024 tokens por empresa cortaria respostas, porque o raciocínio (300–700 tokens medidos) não pode ser desligado.
+- O catálogo e o modelo efetivo passam a respeitar o provedor ativo: prefixo `claude-` → anthropic, `muse-` → meta (`aiProviderForModel` em `@botsaas/config`). O env recusa `AI_DEFAULT_MODEL`/`AI_SUMMARY_MODEL` de outro provedor. Modelo de empresa incompatível cai no padrão sem apagar a escolha salva.
+- Preço inicial `muse-spark-1.3`: US$ 1,25/M entrada, 0,15/M cache lido, 4,25/M saída (raciocínio incluso). Escrita de cache usa o preço de entrada, pois a Meta não a cobra à parte.
+- `pnpm homolog:meta` repete as sondagens (e avisa quando a Meta passar a aceitar algo hoje recusado); testes de contrato cobrem 400/401/403/404/429/5xx e conexão.
+
+**Limites:** o prompt foi escrito para Claude; qualidade de atendimento do Muse Spark depende dos cenários da Etapa 2 em `docs/AI_AGENT.md`. Latência observada de 15–18 s por turno com ferramentas (raciocínio `medium`); `low` reduz latência e custo. A folga amplia o teto de saída por chamada: `maxOutputTokens` deixa de ser um limite estrito do texto visível com esse provider. O streaming funciona no SDK, mas não é usado pelo atendimento. Não houve homologação com WhatsApp Cloud real (sem número conectado); o fluxo foi validado pelo simulador, que usa a mesma ingestão do webhook.
