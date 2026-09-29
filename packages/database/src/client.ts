@@ -10,7 +10,13 @@ export interface CreateDbOptions {
 }
 
 export function createPrismaClient({ connectionString, maxConnections = 10 }: CreateDbOptions) {
-  const adapter = new PrismaPg({ connectionString, max: maxConnections });
+  const adapter = new PrismaPg({
+    connectionString,
+    max: maxConnections,
+    // O adapter-pg envia `Date` sem fuso: com o servidor fora de UTC (ex.: Postgres local que
+    // herda o fuso da máquina) o instante era gravado deslocado. Sessão sempre em UTC.
+    options: '-c TimeZone=UTC',
+  });
   return new PrismaClient({ adapter });
 }
 
