@@ -248,3 +248,16 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - `pnpm homolog:meta` repete as sondagens (e avisa quando a Meta passar a aceitar algo hoje recusado); testes de contrato cobrem 400/401/403/404/429/5xx e conexão.
 
 **Limites:** o prompt foi escrito para Claude; qualidade de atendimento do Muse Spark depende dos cenários da Etapa 2 em `docs/AI_AGENT.md`. Latência observada de 15–18 s por turno com ferramentas (raciocínio `medium`); `low` reduz latência e custo. A folga amplia o teto de saída por chamada: `maxOutputTokens` deixa de ser um limite estrito do texto visível com esse provider. O streaming funciona no SDK, mas não é usado pelo atendimento. Não houve homologação com WhatsApp Cloud real (sem número conectado); o fluxo foi validado pelo simulador, que usa a mesma ingestão do webhook.
+
+## D-029 — Agenda: "verificar e gravar" serializado por empresa com advisory lock
+
+**Contexto:** em 2026-09-29, ao avaliar um pedido de evolução da plataforma, apareceu uma corrida na agenda. `createAppointment`, `rescheduleAppointment` e a reativação em `updateAppointmentStatus` liam os horários ocupados e só depois gravavam, sem transação nem trava. Um teste com 5 pedidos simultâneos para o mesmo horário reservou 4. Duas remarcações simultâneas para o mesmo horário passaram. Reativar um cancelado (→ `CONFIRMED`) não checava se o horário já tinha sido tomado.
+
+**Decisão:**
+
+- A checagem de agendamentos e a gravação rodam numa transação que começa com `pg_advisory_xact_lock(20260929, hashtext(companyId))`, no mesmo padrão do bootstrap do owner (D-019). O lock é por empresa, então uma empresa não bloqueia outra, e é liberado no commit/rollback.
+- A consulta ao calendário externo (Google, rede) acontece **antes** da transação. Assim ela não segura o lock nem estoura o timeout da transação interativa. A corrida que o lock resolve é entre gravações no nosso banco.
+- Não foi usada uma exclusion constraint (`btree_gist`) porque o painel permite **encaixe manual** (`enforceAvailability: false`), que é uma sobreposição intencional. Uma constraint impediria esse encaixe. O encaixe continua fora da checagem e é coberto por teste.
+- A reativação (encerrado → ativo) passa pela mesma checagem. Mudanças entre estados ativos, ou para estados encerrados, não passam.
+
+**Limites:** gravações que não passam por essas três funções não pegam o lock (hoje não há outras). O lock serializa as reservas por empresa, o que só pesa com volume muito alto de reservas simultâneas da mesma empresa. Remarcar um horário para perto do original ainda pode esbarrar no evento espelhado do próprio agendamento no Google, comportamento anterior a esta mudança.
