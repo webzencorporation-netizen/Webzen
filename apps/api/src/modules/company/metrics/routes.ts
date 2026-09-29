@@ -1,11 +1,12 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import { getOwnCompany } from '../../../lib/company-record';
 import { scopeFromRequest } from '../../../lib/scope';
 import { periodStart } from '../../../lib/time';
 import { company } from '../../../plugins/guards';
 import { getDailySeries, getOverviewMetrics } from '../../metrics/service';
-import { aiUsageBreakdown, resolveRange } from '../../usage/breakdown';
+import { resolveRange, usageBreakdown } from '../../usage/breakdown';
 import { getUsageStatus } from '../../usage/limits';
 import { costByConversation, summarizeAiUsageByPeriod } from '../../usage/report';
 
@@ -67,11 +68,12 @@ export const metricsRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request) => {
       const scope = scopeFromRequest(request);
       const { timezone } = await getOwnCompany(scope);
-      return aiUsageBreakdown({
+      return usageBreakdown({
         ...resolveRange(request.query, timezone),
         timezone,
         companyId: scope.companyId,
         includeCompanies: false,
+        whatsappPrices: whatsappPriceTable(scope.container.env.WHATSAPP_PRICE_USD),
       });
     },
   );

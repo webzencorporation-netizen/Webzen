@@ -4,9 +4,11 @@ import { ValidationError } from '@botsaas/shared';
 import { localDateTimeToUtc } from '../calendar/availability';
 
 /**
- * Relatório de consumo da IA por dia, cliente e modelo/provedor — a base para a WebZen saber
- * quanto cada cliente gasta. Custo e tokens vêm de `UsageRecord` (turnos e resumos); execuções,
+ * Relatório de consumo por dia, cliente e modelo/provedor — a base para a WebZen saber quanto
+ * cada cliente gasta. IA: custo e tokens vêm de `UsageRecord` (turnos e resumos); execuções,
  * falhas e latência vêm de `AgentRun`. Testes do painel ficam de fora dos dois lados.
+ * WhatsApp: mensagens que a Meta marcou como cobráveis (`Message.billable`), valoradas pela
+ * tabela de preços por categoria; categoria sem preço fica sem custo (contada à parte).
  *
  * As consultas usam SQL cru no `systemDb` (agrupar por dia no fuso exige `AT TIME ZONE`), então
  * o filtro de empresa é explícito: na visão da empresa, `companyId` é OBRIGATÓRIO.
@@ -26,6 +28,20 @@ export interface UsageBucket {
   errorRate: number;
   /** Média de `durationMs` das execuções que registraram duração. */
   avgDurationMs: number;
+  /** Mensagens de saída que a Meta informou como cobráveis. */
+  whatsappMessages: number;
+  /** Custo estimado das mensagens cobráveis com preço conhecido. */
+  whatsappCostUsd: number;
+  /** Mensagens cobráveis de categorias sem preço configurado (fora de `whatsappCostUsd`). */
+  whatsappUnpricedMessages: number;
+}
+
+export interface WhatsAppCategoryUsage {
+  category: string;
+  messages: number;
+  /** null = sem preço configurado para a categoria. */
+  unitPriceUsd: number | null;
+  costUsd: number | null;
 }
 
 export interface UsageBreakdown {
@@ -36,6 +52,7 @@ export interface UsageBreakdown {
   byDay: (UsageBucket & { day: string })[];
   byModel: (UsageBucket & { model: string; provider: string })[];
   byCompany?: (UsageBucket & { companyId: string; companyName: string })[];
+  whatsappByCategory: WhatsAppCategoryUsage[];
 }
 
 const MAX_RANGE_DAYS = 366;
@@ -64,6 +81,13 @@ interface RunRow {
   durationCount: number;
 }
 
+interface WhatsAppRow {
+  day: string;
+  companyId: string;
+  category: string;
+  messages: number;
+}
+
 interface Accumulator extends Omit<UsageBucket, 'errorRate' | 'avgDurationMs'> {
   durationSum: number;
   durationCount: number;
@@ -81,13 +105,19 @@ function emptyAccumulator(): Accumulator {
     failedRuns: 0,
     durationSum: 0,
     durationCount: 0,
+    whatsappMessages: 0,
+    whatsappCostUsd: 0,
+    whatsappUnpricedMessages: 0,
   };
 }
+
+const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
 
 function finish({ durationSum, durationCount, ...acc }: Accumulator): UsageBucket {
   return {
     ...acc,
-    costUsd: Math.round(acc.costUsd * 1e6) / 1e6,
+    costUsd: round6(acc.costUsd),
+    whatsappCostUsd: round6(acc.whatsappCostUsd),
     errorRate: acc.runs > 0 ? Math.round((acc.failedRuns / acc.runs) * 1e4) / 1e4 : 0,
     avgDurationMs: durationCount > 0 ? Math.round(durationSum / durationCount) : 0,
   };
@@ -131,13 +161,15 @@ export function resolveRange(
   return { from, to };
 }
 
-export async function aiUsageBreakdown(filter: {
+export async function usageBreakdown(filter: {
   from: string;
   to: string;
   timezone: string;
   /** Obrigatório na visão da empresa; na plataforma, opcional (todas as empresas). */
   companyId?: string;
   includeCompanies: boolean;
+  /** Preço por mensagem cobrável, por categoria (ver `whatsappPriceTable`). */
+  whatsappPrices: Record<string, number>;
 }): Promise<UsageBreakdown> {
   const start = localDateTimeToUtc(filter.from, 0, filter.timezone);
   const end = localDateTimeToUtc(addDays(filter.to, 1), 0, filter.timezone);
@@ -145,7 +177,7 @@ export async function aiUsageBreakdown(filter: {
     ? Prisma.sql`AND "companyId" = ${filter.companyId}::uuid`
     : Prisma.empty;
 
-  const [usageRows, runRows] = await Promise.all([
+  const [usageRows, runRows, whatsappRows] = await Promise.all([
     systemDb.$queryRaw<UsageRow[]>`
       SELECT to_char("occurredAt" AT TIME ZONE ${filter.timezone}, 'YYYY-MM-DD') AS "day",
              "companyId"::text AS "companyId",
@@ -175,6 +207,16 @@ export async function aiUsageBreakdown(filter: {
          AND "startedAt" >= ${start} AND "startedAt" < ${end}
          ${company}
        GROUP BY 1, 2, 3, 4`,
+    systemDb.$queryRaw<WhatsAppRow[]>`
+      SELECT to_char("createdAt" AT TIME ZONE ${filter.timezone}, 'YYYY-MM-DD') AS "day",
+             "companyId"::text AS "companyId",
+             coalesce("pricingCategory", 'desconhecida') AS "category",
+             count(*)::int AS "messages"
+        FROM "Message"
+       WHERE "billable" = true
+         AND "createdAt" >= ${start} AND "createdAt" < ${end}
+         ${company}
+       GROUP BY 1, 2, 3`,
   ]);
 
   // O provider registrado nas execuções vale para o modelo; sem execução, deduz pelo prefixo.
@@ -218,6 +260,23 @@ export async function aiUsageBreakdown(filter: {
     }
   }
 
+  // WhatsApp não tem modelo de IA: entra nos totais, por dia e por cliente, não em `byModel`.
+  const byCategory = new Map<string, number>();
+  for (const row of whatsappRows) {
+    const price = filter.whatsappPrices[row.category];
+    byCategory.set(row.category, (byCategory.get(row.category) ?? 0) + row.messages);
+    const accs = [
+      totals,
+      bucket(byDay, row.day),
+      ...(filter.includeCompanies ? [bucket(byCompany, row.companyId)] : []),
+    ];
+    for (const acc of accs) {
+      acc.whatsappMessages += row.messages;
+      if (price === undefined) acc.whatsappUnpricedMessages += row.messages;
+      else acc.whatsappCostUsd += price * row.messages;
+    }
+  }
+
   const report: UsageBreakdown = {
     from: filter.from,
     to: filter.to,
@@ -229,6 +288,17 @@ export async function aiUsageBreakdown(filter: {
     byModel: [...byModel]
       .map(([model, acc]) => ({ model, provider: provider(model), ...finish(acc) }))
       .sort((a, b) => b.costUsd - a.costUsd),
+    whatsappByCategory: [...byCategory]
+      .map(([category, messages]) => {
+        const price = filter.whatsappPrices[category];
+        return {
+          category,
+          messages,
+          unitPriceUsd: price ?? null,
+          costUsd: price === undefined ? null : round6(price * messages),
+        };
+      })
+      .sort((a, b) => b.messages - a.messages),
   };
   if (filter.includeCompanies) {
     const names = await systemDb.company.findMany({
@@ -241,7 +311,7 @@ export async function aiUsageBreakdown(filter: {
         companyName: names.find((row) => row.id === companyId)?.name ?? '—',
         ...finish(acc),
       }))
-      .sort((a, b) => b.costUsd - a.costUsd);
+      .sort((a, b) => b.costUsd + b.whatsappCostUsd - (a.costUsd + a.whatsappCostUsd));
   }
   return report;
 }

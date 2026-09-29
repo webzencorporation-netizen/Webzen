@@ -285,3 +285,15 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Decisão:** job periódico `agent.recover-stalled` (a cada 5 min, via `upsertJobScheduler`, sem duplicar entre réplicas). Ele procura conversas `WHATSAPP` em modo `AI`, não fechadas, de empresas não suspensas/canceladas e com IA ativa, que tenham mensagem do cliente sem `agentHandledAt` há mais de 10 min e menos de 6 h. Para essas, reagenda `agent.reply` (deduplicação por conversa; o runner relê o banco, então repetir é idempotente). Se houver execução `RUNNING` com menos de 5 min, espera. Se já houve **3 execuções concluídas** desde a mensagem pendente mais antiga e ela segue sem tratamento, a falha é persistente e pode estar cobrando IA a cada ciclo. Nesse caso a conversa vai para humano via `requestHandoff`, com nota, notificação e evento, e sai dos próximos ciclos.
 
 **Limites:** mensagens de **saída** com falha não são reenviadas automaticamente, porque a Meta pode tê-las aceitado (D-020); isso segue manual (INCIDENTS). Entradas com mais de 6 h ficam para intervenção humana. O lote é de 500 mensagens por ciclo (com log de aviso ao atingir). Registros parciais anteriores a D-018 continuam sem backfill.
+
+## D-033 — Custo do WhatsApp gravado por mensagem e somado ao relatório
+
+**Contexto:** a partir de 2026-10-01 a Meta cobra cada mensagem de serviço (inclusive as respostas da IA) ao preço de utility/authentication do mercado. O parser já lia `pricing` dos status, mas o dado era descartado, e os relatórios só contavam a IA. A página oficial não traz a tabela que vale em 2026-10-01, que é publicada à parte. O único valor oficial disponível é o exemplo para o Brasil: 0,68 ¢ (tabela de 2026-07-01).
+
+**Decisão:**
+
+- `Message` ganha `billable`, `pricingCategory` e `pricingModel` (colunas opcionais, migração só de adição) e o índice `(billable, createdAt)` para a visão da plataforma. `applyStatusUpdate` grava a cobrança no **primeiro** status que a traz, inclusive quando o status é ignorado por chegar fora de ordem, e não a sobrescreve depois.
+- Preço: referência em `packages/whatsapp/src/pricing.ts` (service/utility/authentication = US$ 0,0068) mais `WHATSAPP_PRICE_USD` (JSON por categoria, validado no env), que prevalece. **Categoria sem preço não recebe valor inventado**: é contada como `whatsappUnpricedMessages` e sai com `costUsd: null` em `whatsappByCategory`.
+- O relatório de consumo (D-031) inclui `whatsappMessages`, `whatsappCostUsd` e `whatsappUnpricedMessages` nos totais, por dia e por cliente, além de `whatsappByCategory`. O WhatsApp não entra em `byModel`, porque não é modelo de IA.
+
+**Limites:** um único mercado (Brasil). Destinatários de outros países são valorados pela mesma tabela. Mensagens enviadas antes desta mudança não têm cobrança gravada. O dia de referência é o de criação da mensagem. O custo é estimativa: reconcilie com a fatura do WhatsApp Manager.

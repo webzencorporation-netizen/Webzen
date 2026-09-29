@@ -167,6 +167,11 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Mensagens de saída com falha continuam sem reenvio automático (D-020).
   - 4 testes novos (recuperação ponta a ponta, filtros, limite com handoff único, várias empresas). Lint, typecheck e suíte completa verdes (515 testes).
 
+- **Custo do WhatsApp nos relatórios (2026-09-29, D-033)**
+  - A cobrança informada pela Meta nos status é gravada por mensagem (migração `message_whatsapp_pricing`: 3 colunas opcionais + índice) e somada ao relatório de consumo por dia, cliente e categoria.
+  - Preço: referência oficial (US$ 0,0068 service/utility/authentication, Brasil) + `WHATSAPP_PRICE_USD`; categorias sem preço (marketing) ficam sem custo, contadas à parte.
+  - 3 testes novos (gravação única e fora de ordem, soma por categoria com e sem preço + isolamento, validação do env). Lint, typecheck e suíte completa verdes (518 testes).
+
 ## Em andamento
 
 - Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
@@ -178,7 +183,7 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
 3. Implementar [contabilização de custos desconhecidos](docs/COST_ACCOUNTING_PLAN.md) em etapa própria: proposta preparada, sem migração ou mudança de comportamento nesta sessão. Ampliar expurgo/reconciliação de storage conforme limites documentados.
 4. Preparar replay administrativo/reconciliação de jobs esgotados sem duplicar efeitos externos.
 5. **Decisão de produto pendente — BSUID no WhatsApp:** hoje, clientes com nome de usuário e sem interação recente não recebem resposta automática; as mensagens ficam retidas. Suporte completo exige migração de `Contact` (telefone opcional + BSUID único por empresa), envio por `recipient`, mescla quando o telefone aparecer, troca de número (`user_id_update`) e reprocessamento dos eventos retidos. Ver D-026 e [WHATSAPP](docs/WHATSAPP.md).
-6. **Custo da Meta a partir de 2026-10-01:** cada mensagem de serviço (inclusive respostas da IA) passa a ser cobrada ao preço de utility. Os relatórios contam só a IA. Decidir se o custo WhatsApp entra nos relatórios, limites e planos; os campos `pricing` dos status já são lidos.
+6. **Custo da Meta a partir de 2026-10-01:** já gravado e somado aos relatórios (D-033). Pendente: conferir a tabela oficial vigente em 2026-10-01 e configurar `WHATSAPP_PRICE_USD` (principalmente marketing); decidir se o custo WhatsApp entra em limites e planos.
 
 ## Problemas conhecidos
 

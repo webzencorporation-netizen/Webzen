@@ -176,6 +176,20 @@ describe('configuração de ambiente', () => {
     expect(parseEnv({ ...local, AI_DEFAULT_MODEL: 'muse-spark-1.3' }).AI_PROVIDER).toBe('mock');
   });
 
+  it('lê a tabela de preços do WhatsApp e recusa formato inválido', () => {
+    expect(
+      parseEnv({ ...local, WHATSAPP_PRICE_USD: '{"marketing":0.0625}' }).WHATSAPP_PRICE_USD,
+    ).toEqual({
+      marketing: 0.0625,
+    });
+    expect(parseEnv(local).WHATSAPP_PRICE_USD).toBeUndefined();
+    for (const invalid of ['0.0068', '{"service":-1}', '{"service":"barato"}', 'não é json']) {
+      expect(() => parseEnv({ ...local, WHATSAPP_PRICE_USD: invalid })).toThrow(
+        /WHATSAPP_PRICE_USD/,
+      );
+    }
+  });
+
   it('identifica o provedor dono de cada modelo pelo prefixo', () => {
     expect(aiProviderForModel('claude-opus-5')).toBe('anthropic');
     expect(aiProviderForModel('muse-spark-1.3')).toBe('meta');

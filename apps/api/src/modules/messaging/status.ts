@@ -27,15 +27,31 @@ export async function applyStatusUpdate(
 ): Promise<'updated' | 'ignored' | 'not_found'> {
   const message = await scope.db.message.findFirst({ where: { externalId: update.externalId } });
   if (!message) return 'not_found';
+  // Cobrança da Meta: gravada no primeiro status que a traz, mesmo se o status em si for ignorado.
+  const pricing =
+    update.pricing?.category && message.pricingCategory === null
+      ? {
+          billable: update.pricing.billable ?? null,
+          pricingCategory: update.pricing.category,
+          pricingModel: update.pricing.pricingModel ?? null,
+        }
+      : {};
   const next = MAP[update.status];
   // Status chegam fora de ordem: nunca regredimos (ex.: "delivered" depois de "read").
-  if (next !== 'FAILED' && ORDER[next] <= ORDER[message.status]) return 'ignored';
-  if (message.status === 'FAILED' && next !== 'FAILED') return 'ignored';
+  const stale =
+    (next !== 'FAILED' && ORDER[next] <= ORDER[message.status]) ||
+    (message.status === 'FAILED' && next !== 'FAILED');
+  if (stale) {
+    if ('pricingCategory' in pricing)
+      await scope.db.message.update({ where: { id: message.id }, data: pricing });
+    return 'ignored';
+  }
 
   const error = update.errors?.[0];
   await scope.db.message.update({
     where: { id: message.id },
     data: {
+      ...pricing,
       status: next,
       ...(next === 'SENT' ? { sentAt: update.timestamp } : {}),
       ...(next === 'DELIVERED' ? { deliveredAt: update.timestamp } : {}),

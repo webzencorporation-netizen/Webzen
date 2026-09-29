@@ -195,3 +195,85 @@ describe('relatório de consumo da IA — empresa', () => {
     expect(JSON.stringify(report)).not.toContain('Barbearia Outra');
   });
 });
+
+describe('custo do WhatsApp no relatório', () => {
+  async function outbound(
+    companyId: string,
+    at: string,
+    pricing: { billable: boolean; category: string } | null,
+  ) {
+    const contact = await systemDb.contact.upsert({
+      where: { companyId_phone: { companyId, phone: '5511900000000' } },
+      create: { companyId, phone: '5511900000000' },
+      update: {},
+    });
+    const conversation =
+      (await systemDb.conversation.findFirst({ where: { companyId, contactId: contact.id } })) ??
+      (await systemDb.conversation.create({ data: { companyId, contactId: contact.id } }));
+    await systemDb.message.create({
+      data: {
+        companyId,
+        conversationId: conversation.id,
+        direction: 'OUTBOUND',
+        sender: 'AI',
+        text: 'resposta',
+        status: 'DELIVERED',
+        createdAt: new Date(at),
+        ...(pricing
+          ? { billable: pricing.billable, pricingCategory: pricing.category, pricingModel: 'PMP' }
+          : {}),
+      },
+    });
+  }
+
+  it('soma mensagens cobráveis por categoria com a tabela de preços, sem inventar preço', async () => {
+    const { bella, outra } = await seed();
+    await outbound(bella.id, '2026-09-10T12:00:00Z', { billable: true, category: 'service' });
+    await outbound(bella.id, '2026-09-10T12:05:00Z', { billable: true, category: 'service' });
+    await outbound(bella.id, '2026-09-10T12:10:00Z', { billable: true, category: 'marketing' });
+    await outbound(bella.id, '2026-09-10T12:15:00Z', { billable: false, category: 'service' });
+    await outbound(bella.id, '2026-09-10T12:20:00Z', null); // sem status de cobrança ainda
+    await outbound(outra.id, '2026-09-10T15:00:00Z', { billable: true, category: 'utility' });
+    await outbound(bella.id, '2026-10-02T12:00:00Z', { billable: true, category: 'service' }); // fora
+    await createUser({ email: 'admin@webzen.com', platformRole: 'PLATFORM_ADMIN' });
+    const admin = await login(harness.app, 'admin@webzen.com');
+
+    const report = (await admin.get(`/api/platform/usage/breakdown?${RANGE}`)).json();
+    expect(report.totals).toMatchObject({ whatsappMessages: 4, whatsappUnpricedMessages: 1 });
+    expect(report.totals.whatsappCostUsd).toBeCloseTo(3 * 0.0068, 6);
+
+    const byCategory = Object.fromEntries(
+      report.whatsappByCategory.map((row: { category: string }) => [row.category, row]),
+    );
+    expect(byCategory.service).toMatchObject({ messages: 2, unitPriceUsd: 0.0068 });
+    expect(byCategory.utility).toMatchObject({ messages: 1, unitPriceUsd: 0.0068 });
+    expect(byCategory.marketing).toMatchObject({ messages: 1, unitPriceUsd: null, costUsd: null });
+
+    const bellaRow = report.byCompany.find(
+      (row: { companyId: string }) => row.companyId === bella.id,
+    );
+    expect(bellaRow).toMatchObject({ whatsappMessages: 3, whatsappUnpricedMessages: 1 });
+    expect(bellaRow.whatsappCostUsd).toBeCloseTo(2 * 0.0068, 6);
+    expect(report.byDay).toEqual([
+      expect.objectContaining({ day: '2026-09-09', whatsappMessages: 0 }),
+      expect.objectContaining({ day: '2026-09-10', whatsappMessages: 4 }),
+    ]);
+
+    // Preço configurado no ambiente substitui/complementa a referência.
+    const env = harness.container.env;
+    const previous = env.WHATSAPP_PRICE_USD;
+    env.WHATSAPP_PRICE_USD = { marketing: 0.0625 };
+    try {
+      const priced = (await admin.get(`/api/platform/usage/breakdown?${RANGE}`)).json();
+      expect(priced.totals.whatsappUnpricedMessages).toBe(0);
+      expect(priced.totals.whatsappCostUsd).toBeCloseTo(3 * 0.0068 + 0.0625, 6);
+    } finally {
+      env.WHATSAPP_PRICE_USD = previous;
+    }
+
+    // Visão da empresa: só as próprias mensagens.
+    const owner = await login(harness.app, 'bella@clinica.com');
+    const own = (await owner.get(`/api/app/metrics/usage/breakdown?${RANGE}`)).json();
+    expect(own.totals.whatsappMessages).toBe(3);
+  });
+});

@@ -54,6 +54,24 @@ export const envSchema = z.object({
   WHATSAPP_GRAPH_API_BASE_URL: z.url().default('https://graph.facebook.com'),
   WHATSAPP_APP_SECRET: optionalString,
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: optionalString,
+  /** Preço por mensagem cobrável (USD) por categoria; complementa a referência do pacote whatsapp. */
+  WHATSAPP_PRICE_USD: optionalString.transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = undefined;
+    }
+    const result = z.record(z.string().min(1), z.number().nonnegative()).safeParse(parsed);
+    if (result.success) return result.data;
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        'Use JSON { "categoria": preço em USD }, ex.: {"marketing":0.0625,"service":0.0068}.',
+    });
+    return z.NEVER;
+  }),
   META_APP_ID: optionalString,
   META_EMBEDDED_SIGNUP_CONFIG_ID: optionalString,
 

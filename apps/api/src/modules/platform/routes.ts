@@ -15,6 +15,7 @@ import {
   PLATFORM_ROLES,
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import type { Actor } from '../../context';
 import { auditPlatform } from '../../lib/audit';
@@ -24,7 +25,7 @@ import { periodStart } from '../../lib/time';
 import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
-import { aiUsageBreakdown, resolveRange } from '../usage/breakdown';
+import { resolveRange, usageBreakdown } from '../usage/breakdown';
 import { costByCompany, summarizeAiUsageByPeriod } from '../usage/report';
 import {
   assertCompanyExists,
@@ -421,11 +422,12 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request) => {
       const timezone = 'America/Sao_Paulo';
-      return aiUsageBreakdown({
+      return usageBreakdown({
         ...resolveRange(request.query, timezone),
         timezone,
         companyId: request.query.companyId,
         includeCompanies: true,
+        whatsappPrices: whatsappPriceTable(container.env.WHATSAPP_PRICE_USD),
       });
     },
   );
