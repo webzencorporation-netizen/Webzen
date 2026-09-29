@@ -261,3 +261,19 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - A reativação (encerrado → ativo) passa pela mesma checagem. Mudanças entre estados ativos, ou para estados encerrados, não passam.
 
 **Limites:** gravações que não passam por essas três funções não pegam o lock (hoje não há outras). O lock serializa as reservas por empresa, o que só pesa com volume muito alto de reservas simultâneas da mesma empresa. Remarcar um horário para perto do original ainda pode esbarrar no evento espelhado do próprio agendamento no Google, comportamento anterior a esta mudança.
+
+## D-030 — Sessão do Postgres sempre em UTC
+
+**Contexto:** em 2026-09-29, um teste do relatório de consumo por dia falhou: um registro das 23:30 de São Paulo caía no dia seguinte. A causa: o `@prisma/adapter-pg` envia `Date` **sem fuso**, e o Postgres local (embedded) herda o fuso da máquina (`America/Santiago`). Um `2026-09-10T02:30Z` gravado pelo app era guardado como `05:30Z`. O Prisma desfazia o deslocamento na leitura, então o app parecia correto. Mas valores gerados pelo banco (`now()`, `@default(now())`) ficavam certos e os gravados pelo app ficavam deslocados, e todo SQL com datas (agrupar por dia, `AT TIME ZONE`) errava. Servidores em UTC, o padrão dos Postgres gerenciados, não manifestam o problema.
+
+**Decisão:** `createPrismaClient` abre toda sessão com `options: '-c TimeZone=UTC'`. O teste `apps/api/test/db-timezone.test.ts` configura o banco de teste fora de UTC (`ALTER DATABASE … SET timezone`) para reproduzir o problema em qualquer ambiente, inclusive no CI.
+
+**Limites:** dados já gravados por esta aplicação num Postgres local fora de UTC continuam deslocados (horários do app aparecem adiantados pelo offset do servidor). É só dado de desenvolvimento: reseede ou recrie o banco local. Produção em UTC não é afetada. Conexões `pg` diretas (hoje só o setup E2E, sem datas) não passam por esse ajuste.
+
+## D-031 — Relatório de consumo da IA por dia, cliente e modelo
+
+**Contexto:** o custo por chamada já era registrado (`UsageRecord`), mas só havia totais por período e o custo total por empresa. Para a WebZen cobrar e acompanhar cada cliente faltavam o recorte por dia, modelo e provedor, um intervalo livre e a qualidade (erros e latência).
+
+**Decisão:** `GET /api/platform/usage/breakdown` (`platform:usage:read`, fuso de São Paulo, filtro opcional `companyId`) e `GET /api/app/metrics/usage/breakdown` (`usage:read`, fuso da empresa, só a própria empresa). Os dois recebem `from`/`to` (AAAA-MM-DD, inclusivos, padrão = mês corrente, máximo 366 dias) e devolvem `totals`, `byDay`, `byModel` (com provedor) e, na plataforma, `byCompany`. Custo e tokens vêm de `UsageRecord` (`AI_CALL`, sem testes). Execuções, falhas e latência média vêm de `AgentRun` (`SUCCEEDED`/`FAILED`, sem `TEST_CHAT`). Não houve migração nem tabela de agregados: a agregação é feita em SQL com `AT TIME ZONE`, e o filtro de empresa é explícito porque o SQL cru não passa pela extensão de tenant.
+
+**Limites:** o recorte por dia usa o instante de início da execução. Custos desconhecidos seguem o [plano de custos](docs/COST_ACCOUNTING_PLAN.md). Ainda não há exportação CSV nem tela no painel (os endpoints estão prontos). Tabela de agregados só se o volume exigir.

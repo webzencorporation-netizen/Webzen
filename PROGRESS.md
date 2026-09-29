@@ -157,6 +157,11 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Correção: "verificar e gravar" em transação com advisory lock por empresa (criação, remarcação e reativação). A consulta ao Google fica fora do lock. O encaixe manual (`enforceAvailability: false`) é preservado.
   - 4 testes novos em `apps/api/test/calendar.test.ts`. Lint, typecheck e suíte completa verdes (506 testes).
 
+- **Relatório de consumo da IA e fuso do banco (2026-09-29, D-030/D-031)**
+  - `GET /api/platform/usage/breakdown` e `GET /api/app/metrics/usage/breakdown`: totais, por dia, por modelo/provedor e (plataforma) por cliente; chamadas, tokens, custo, execuções, taxa de erro e latência média; período livre (padrão mês corrente).
+  - Bug encontrado pelo teste de virada de dia: o adapter-pg gravava datas deslocadas quando o Postgres não está em UTC (local herdava `America/Santiago`). Sessão agora sempre em UTC; teste reproduz com o banco configurado fora de UTC. Dados locais antigos ficam deslocados — reseedar o banco de desenvolvimento.
+  - 5 testes novos (agrupamento, fuso, isolamento entre clientes, validação de período, permissão, fuso do banco). Lint, typecheck e suíte completa verdes (511 testes).
+
 ## Em andamento
 
 - Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
