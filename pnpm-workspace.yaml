@@ -4,16 +4,22 @@ packages:
 
 # Pacotes com scripts de instalação permitidos (pnpm bloqueia os demais por segurança).
 allowBuilds:
-  "@prisma/engines": true
+  '@prisma/engines': true
   prisma: true
   esbuild: true
   sharp: true
   msgpackr-extract: true
   redis-memory-server: true
   embedded-postgres: true
-  "@embedded-postgres/linux-x64": true
+  '@embedded-postgres/linux-x64': true
   unrs-resolver: true
 
 minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.104.0'
   - '@tanstack/react-query@5.104.0'
+
+# Correções de segurança em dependências transitivas do CLI do Prisma (ferramenta de
+# migração, não roda no app). Remover quando o Prisma trouxer versões corrigidas.
+overrides:
+  deepmerge-ts: '>=8.0.0 <9'
+  mysql2: '>=3.23.1 <4'

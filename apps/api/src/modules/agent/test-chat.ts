@@ -1,4 +1,5 @@
-import { NotFoundError } from '@botsaas/shared';
+import { NotFoundError, RateLimitError } from '@botsaas/shared';
+import { checkAiAllowance } from '../usage/limits';
 import type { CompanyScope } from '../../context';
 import { executeAgentTurn, DEFAULT_HANDOFF_MESSAGE } from './runner';
 
@@ -49,6 +50,10 @@ export async function runTestChat(scope: CompanyScope, userKey: string, text: st
   const conversation = await ensureTestConversation(scope, userKey);
   const config = await scope.db.aIConfiguration.findFirst();
   if (!config) throw new NotFoundError('Configure o agente antes de testar.');
+  // O teste chama a IA paga: respeita os mesmos limites de plano e orçamento do atendimento.
+  const allowance = await checkAiAllowance(scope);
+  if (!allowance.allowed)
+    throw new RateLimitError(`${allowance.reason ?? 'Limite de uso da IA atingido'}.`);
 
   await scope.db.message.create({
     data: {

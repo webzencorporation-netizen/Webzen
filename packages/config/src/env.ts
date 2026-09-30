@@ -34,6 +34,31 @@ export const envSchema = z.object({
   COOKIE_SECURE: booleanString.optional(),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(300),
   LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  /** Tentativas de login por CONTA a cada 15 min, de qualquer IP (força bruta distribuída). */
+  LOGIN_ACCOUNT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  /** Chamadas do "Testar agente" (IA paga) por empresa por minuto. */
+  AI_TEST_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  /**
+   * Proxies confiáveis para ler o IP real do `X-Forwarded-For`. Vazio = nenhum (o IP é o da
+   * conexão). Use o nº de saltos (ex.: `1`) ou IPs/CIDRs separados por vírgula. `true`
+   * (confiar em qualquer origem) é recusado: permitiria forjar o IP e burlar rate limits.
+   */
+  TRUST_PROXY: optionalString.transform((value, ctx) => {
+    if (value === undefined || value === 'false') return false as const;
+    if (value === 'true') {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'TRUST_PROXY=true confia em qualquer origem; informe saltos (ex.: 1) ou IPs/CIDRs.',
+      });
+      return z.NEVER;
+    }
+    if (/^\d+$/.test(value)) return Number(value);
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }),
 
   // IA
   AI_PROVIDER: z.enum(['anthropic', 'meta', 'mock']).default('mock'),

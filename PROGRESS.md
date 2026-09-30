@@ -172,6 +172,12 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Preço: referência oficial (US$ 0,0068 service/utility/authentication, Brasil) + `WHATSAPP_PRICE_USD`; categorias sem preço (marketing) ficam sem custo, contadas à parte.
   - 3 testes novos (gravação única e fora de ordem, soma por categoria com e sem preço + isolamento, validação do env). Lint, typecheck e suíte completa verdes (518 testes).
 
+- **Auditoria e hardening de segurança (2026-09-30, D-034)**
+  - Mapeamento completo (155 rotas, auth, RBAC, tenant, webhooks, SSRF, SQL cru, uploads, IA, dependências, histórico git). Nada crítico; 2 ALTAS, 3 MÉDIAS e 2 BAIXAS confirmadas por teste e corrigidas: IP forjável (`trustProxy`), login sem limite por conta, "Testar agente" sem limite/orçamento, redação de logs rasa, painel sem CSP/HSTS, fixação de sessão, dependências do CLI do Prisma.
+  - Inventário de endpoints com teste de política; verificador de segredos (CI + pré-commit) e `pnpm audit` no CI. CSP validada com build de produção no navegador (sem violações).
+  - 37 testes de segurança novos; suíte completa verde (555 testes). `pnpm audit`: nenhuma vulnerabilidade conhecida.
+  - Pendentes documentados: MFA para administradores, papel de banco restrito em produção, expiração de sessão por inatividade.
+
 ## Em andamento
 
 - Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.

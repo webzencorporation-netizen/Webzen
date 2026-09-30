@@ -9,6 +9,7 @@ import type { AppContainer } from './container';
 import { registerAuth } from './plugins/auth';
 import { registerCsrf } from './plugins/csrf';
 import { registerErrorHandling } from './plugins/errors';
+import { registerRouteInventory } from './plugins/route-inventory';
 import { authRoutes } from './modules/auth/routes';
 import { companyRoutes } from './modules/company/routes';
 import { platformRoutes } from './modules/platform/routes';
@@ -19,9 +20,18 @@ const REQUEST_ID_PATTERN = /^[a-zA-Z0-9-]{8,64}$/;
 
 export async function buildApp(container: AppContainer): Promise<FastifyInstance> {
   const { env } = container;
+  // Nunca `true`: o IP de `X-Forwarded-For` só vale vindo de proxy configurado (TRUST_PROXY).
+  // Número = saltos confiáveis a partir do servidor (mesma regra do Fastify para inteiros).
+  const trustProxy =
+    typeof env.TRUST_PROXY === 'number'
+      ? (
+          (hops: number) => (_address: string, hop: number) =>
+            hop < hops
+        )(env.TRUST_PROXY)
+      : env.TRUST_PROXY;
   const app = Fastify({
     loggerInstance: container.logger as FastifyBaseLogger,
-    trustProxy: true,
+    trustProxy,
     bodyLimit: 2 * 1024 * 1024,
     genReqId: (request) => {
       const incoming = request.headers['x-request-id'];
@@ -33,6 +43,7 @@ export async function buildApp(container: AppContainer): Promise<FastifyInstance
   });
 
   app.decorate('container', container);
+  registerRouteInventory(app);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 

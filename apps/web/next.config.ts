@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { securityHeaders } from './security-headers';
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
 
@@ -21,17 +22,7 @@ const nextConfig: NextConfig = {
     return [{ source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` }];
   },
   async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-        ],
-      },
-    ];
+    return [{ source: '/:path*', headers: securityHeaders(process.env.NODE_ENV === 'production') }];
   },
 };
 

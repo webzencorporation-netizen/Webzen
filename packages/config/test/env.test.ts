@@ -176,6 +176,16 @@ describe('configuração de ambiente', () => {
     expect(parseEnv({ ...local, AI_DEFAULT_MODEL: 'muse-spark-1.3' }).AI_PROVIDER).toBe('mock');
   });
 
+  it('TRUST_PROXY: desligado por padrão, aceita saltos ou IPs e recusa confiar em todos', () => {
+    expect(parseEnv(local).TRUST_PROXY).toBe(false);
+    expect(parseEnv({ ...local, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
+    expect(parseEnv({ ...local, TRUST_PROXY: '10.0.0.0/8, 127.0.0.1' }).TRUST_PROXY).toEqual([
+      '10.0.0.0/8',
+      '127.0.0.1',
+    ]);
+    expect(() => parseEnv({ ...local, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/);
+  });
+
   it('lê a tabela de preços do WhatsApp e recusa formato inválido', () => {
     expect(
       parseEnv({ ...local, WHATSAPP_PRICE_USD: '{"marketing":0.0625}' }).WHATSAPP_PRICE_USD,

@@ -60,19 +60,23 @@ describe('troca obrigatória da senha temporária no servidor', () => {
       const me = await client.get('/api/auth/me?refresh=true');
       expect(me.statusCode).toBe(200);
       expect(me.json().user.mustChangePassword).toBe(true);
-      // Um cookie provisório antigo não impede autenticar novamente.
-      expect(
-        (await client.post('/api/auth/login', { email: EMAIL, password: DEFAULT_PASSWORD }))
-          .statusCode,
-      ).toBe(200);
-      expectPasswordRequired(await client.get(protectedPath));
+      // Um cookie provisório antigo não impede autenticar novamente; o novo login o invalida
+      // (fixação de sessão) e a nova sessão continua obrigada a trocar a senha.
+      const relogin = await client.post('/api/auth/login', {
+        email: EMAIL,
+        password: DEFAULT_PASSWORD,
+      });
+      expect(relogin.statusCode).toBe(200);
+      expect((await client.get('/api/auth/me')).statusCode).toBe(401);
+      const fresh = await login(harness.app, EMAIL);
+      expectPasswordRequired(await fresh.get(protectedPath));
       if (kind === 'company') {
         expectPasswordRequired(
-          await client.post('/api/app/contacts', { phone: '5511999991111', name: 'Bloqueado' }),
+          await fresh.post('/api/app/contacts', { phone: '5511999991111', name: 'Bloqueado' }),
         );
         expect(await systemDb.contact.count()).toBe(0);
       } else {
-        expectPasswordRequired(await client.post('/api/platform/companies', {}));
+        expectPasswordRequired(await fresh.post('/api/platform/companies', {}));
         expect(await systemDb.company.count()).toBe(1);
       }
     },

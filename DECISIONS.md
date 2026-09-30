@@ -297,3 +297,20 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - O relatório de consumo (D-031) inclui `whatsappMessages`, `whatsappCostUsd` e `whatsappUnpricedMessages` nos totais, por dia e por cliente, além de `whatsappByCategory`. O WhatsApp não entra em `byModel`, porque não é modelo de IA.
 
 **Limites:** um único mercado (Brasil). Destinatários de outros países são valorados pela mesma tabela. Mensagens enviadas antes desta mudança não têm cobrança gravada. O dia de referência é o de criação da mensagem. O custo é estimativa: reconcilie com a fatura do WhatsApp Manager.
+
+## D-034 — Auditoria de segurança: proxy confiável, limites por conta e custo, redação de logs e inventário de endpoints
+
+**Contexto:** a auditoria de 2026-09-30 mapeou as 155 rotas, a autenticação, a autorização, o isolamento entre empresas, os webhooks, as chamadas externas, o SQL cru, os uploads, a IA e as dependências. A base se mostrou sólida: nenhuma rota sem guard, todos os modelos com `companyId` sob a extensão de tenant, SQL cru parametrizado e filtrado por empresa, Argon2id, sessões opacas com hash, webhook HMAC em tempo constante, OAuth com state assinado, nenhuma URL de usuário em chamadas de rede, histórico git sem segredos. Foram confirmados por teste: `trustProxy: true` (IP forjável via `X-Forwarded-For`, burlando os limites por IP, inclusive do login); login limitado só por IP; o "Testar agente" chamando a IA paga sem limite próprio nem orçamento; redação de logs só um nível abaixo do topo; painel sem CSP/HSTS; login mantendo a sessão anterior do navegador; 3 alertas de dependência no CLI do Prisma; `LocalObjectStorage.get` lançando de forma síncrona.
+
+**Decisão:**
+
+- `TRUST_PROXY` (vazio = nenhum proxy; saltos ou IPs/CIDRs), com `true` recusado na validação do env.
+- Limite de login **por conta** (`LOGIN_ACCOUNT_MAX_ATTEMPTS`/15 min, via `createRateLimit` no mesmo armazenamento do rate limit, Redis quando houver), contando toda tentativa para não revelar cadastros; e-mail normalizado antes da validação.
+- "Testar agente": limite por empresa (`AI_TEST_RATE_LIMIT_PER_MINUTE`) e a mesma `checkAiAllowance` do atendimento (planos e orçamentos).
+- Redação de logs recursiva em `formatters.log` (qualquer campo com nome sensível, até 8 níveis, incluindo erros); caminhos com curinga em vários níveis no `redact` do Pino custavam ~100x por linha (3 → 366 µs) e foram descartados; a função própria custa ~5 µs.
+- CSP (sem nonce, conforme o guia da versão instalada do Next) e HSTS no painel em produção.
+- Login descarta a sessão anterior do navegador.
+- Inventário de endpoints (`plugins/route-inventory.ts`) com metadados dos guards e teste de política sobre todas as rotas.
+- `pnpm check:secrets` (CI e hook local de pré-commit) e `pnpm audit --audit-level high` no CI; `overrides` para `deepmerge-ts` 8 e `mysql2` 3.23.1 (transitivas do CLI do Prisma), validados com `prisma validate/generate/migrate status`.
+
+**Limites:** sem MFA (recomendado para administradores da plataforma; não improvisado). Sem fluxo de "esqueci a senha" (redefinição pela administração). `customerConfirmed` nas ferramentas de agenda continua sendo informado pelo modelo. Sessões duram 14 dias sem expiração por inatividade. A aplicação usa o papel dono do banco (Neon/local); um papel restrito só com DML é recomendado em produção. CSP usa `'unsafe-inline'` (exigido pelo Next sem nonce). `pnpm audit` no CI pode falhar quando surgir um alerta novo — é intencional, para que ele seja tratado.
