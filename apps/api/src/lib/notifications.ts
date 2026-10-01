@@ -1,4 +1,9 @@
-import type { NotificationSeverity, NotificationType, Prisma } from '@botsaas/database';
+import {
+  systemDb,
+  type NotificationSeverity,
+  type NotificationType,
+  type Prisma,
+} from '@botsaas/database';
 import type { CompanyScope } from '../context';
 
 export interface NotifyInput {
@@ -24,6 +29,21 @@ export async function notify(scope: CompanyScope, input: NotifyInput): Promise<v
       link: input.link ?? null,
       severity: input.severity ?? 'INFO',
       userId: input.userId ?? null,
+      data: (input.data ?? undefined) as Prisma.InputJsonValue | undefined,
+    },
+  });
+}
+
+/** Notificação para a equipe WebZen (área da plataforma), fora do escopo de qualquer empresa. */
+export async function notifyPlatform(input: Omit<NotifyInput, 'userId'>): Promise<void> {
+  await systemDb.notification.create({
+    data: {
+      companyId: null,
+      type: input.type,
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+      severity: input.severity ?? 'INFO',
       data: (input.data ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });

@@ -200,3 +200,40 @@ export const AUTOMATION_TRIGGERS = [
   'appointment.reminder_due',
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
+
+export const TICKET_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING_USER', 'RESOLVED', 'CLOSED'] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export const TICKET_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+export const TICKET_CATEGORIES = ['BILLING', 'TECHNICAL', 'WHATSAPP', 'AI', 'ACCOUNT', 'OTHER'] as const;
+export type TicketCategory = (typeof TICKET_CATEGORIES)[number];
+export const FEEDBACK_CATEGORIES = ['BUG', 'SUGGESTION', 'QUESTION', 'OTHER'] as const;
+export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
+
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  OPEN: 'Aberto',
+  IN_PROGRESS: 'Em atendimento',
+  WAITING_USER: 'Aguardando sua resposta',
+  RESOLVED: 'Resolvido',
+  CLOSED: 'Encerrado',
+};
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+  LOW: 'Baixa',
+  MEDIUM: 'Média',
+  HIGH: 'Alta',
+  URGENT: 'Urgente',
+};
+export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
+  BILLING: 'Cobrança e plano',
+  TECHNICAL: 'Problema técnico',
+  WHATSAPP: 'WhatsApp',
+  AI: 'Atendente com IA',
+  ACCOUNT: 'Conta e acesso',
+  OTHER: 'Outro assunto',
+};
+export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategory, string> = {
+  BUG: 'Encontrei um erro',
+  SUGGESTION: 'Sugestão',
+  QUESTION: 'Dúvida',
+  OTHER: 'Outro',
+};

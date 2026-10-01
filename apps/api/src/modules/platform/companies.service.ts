@@ -72,7 +72,10 @@ export async function createCompany(
 
   const plan = input.planKey
     ? await systemDb.plan.findUnique({ where: { key: input.planKey } })
-    : await systemDb.plan.findFirst({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }] });
+    : await systemDb.plan.findFirst({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
+      });
   if (input.planKey && !plan) throw new NotFoundError('Plano não encontrado.');
 
   const company = await systemDb.$transaction(async (tx) => {

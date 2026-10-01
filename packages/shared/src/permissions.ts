@@ -44,6 +44,8 @@ export const COMPANY_PERMISSIONS = [
   'billing:read',
   'billing:manage',
   'developer:manage',
+  'support:read',
+  'support:write',
 ] as const;
 
 export type CompanyPermission = (typeof COMPANY_PERMISSIONS)[number];
@@ -81,6 +83,8 @@ const MANAGER: CompanyPermission[] = [
   'automations:read',
   'integrations:read',
   'usage:read',
+  'support:read',
+  'support:write',
 ];
 
 const COMPANY_ADMIN: CompanyPermission[] = COMPANY_PERMISSIONS.filter(
@@ -129,6 +133,7 @@ export const PLATFORM_PERMISSIONS = [
   'platform:admins:manage',
   'platform:pricing:write',
   'platform:health:read',
+  'platform:support:manage',
 ] as const;
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[number];
 

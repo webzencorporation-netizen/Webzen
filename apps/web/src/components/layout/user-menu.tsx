@@ -1,13 +1,14 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Check, ChevronDown, CreditCard, KeyRound, LogOut, ShieldCheck, UserCog } from 'lucide-react';
+import { Building2, Check, ChevronDown, CreditCard, KeyRound, LogOut, MessageSquareHeart, ShieldCheck, UserCog } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
 import { Avatar } from '@/components/ui/misc';
 import { ChangePasswordDialog } from './change-password-dialog';
+import { FeedbackDialog } from './feedback-dialog';
 import { api } from '@/lib/api';
 import { useLogout, type Me } from '@/lib/session';
 import { roleLabels } from '@/i18n/pt-BR';
@@ -19,6 +20,7 @@ export function UserMenu({ me }: { me: Me }) {
   const router = useRouter();
   const client = useQueryClient();
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const switchCompany = useMutation({
     mutationFn: (companyId: string) => api.post<Me>('/auth/switch-company', { companyId }),
     onSuccess: (updated) => {
@@ -83,12 +85,18 @@ export function UserMenu({ me }: { me: Me }) {
             <DropdownMenu.Item className={itemClass} onSelect={() => setPasswordOpen(true)}>
               <KeyRound className="h-4 w-4 text-slate-400" /> Alterar senha
             </DropdownMenu.Item>
+            {me.activeCompany ? (
+              <DropdownMenu.Item className={itemClass} onSelect={() => setFeedbackOpen(true)}>
+                <MessageSquareHeart className="h-4 w-4 text-slate-400" /> Enviar feedback
+              </DropdownMenu.Item>
+            ) : null}
             <DropdownMenu.Item className={itemClass} onSelect={() => void logout()}>
               <LogOut className="h-4 w-4 text-slate-400" /> Sair
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       <ChangePasswordDialog open={passwordOpen || me.user.mustChangePassword} forced={me.user.mustChangePassword} onOpenChange={setPasswordOpen} />
     </>
   );

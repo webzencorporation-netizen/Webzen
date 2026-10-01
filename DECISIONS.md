@@ -403,3 +403,11 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Bug evitado:** a primeira versão usava a regra `::ffff:0:0/96` no `BlockList` do Node, que compara IPv4 contra ela e bloquearia **todos** os destinos IPv4 em produção; o teste com `8.8.8.8` pegou antes do commit.
 
 **Limites:** a API v1 não cobre agenda, CRM e templates. Sem assinatura de webhook por chave rotativa dupla (troca de segredo é imediata). Payload dos eventos traz IDs (o receptor consulta a API para detalhes).
+
+## D-042 — Suporte por chamados e feedback no painel
+
+**Contexto:** "Suporte prioritário" é vendido no Business, mas não havia canal de suporte no produto (só e-mail).
+
+**Decisão:** chamados (`SupportTicket` + `SupportTicketMessage`) com categoria, status (`OPEN`, `IN_PROGRESS`, `WAITING_USER`, `RESOLVED`, `CLOSED`) e prioridade. Abertura com `support:write` (gerente para cima); plano com `PRIORITY_SUPPORT` abre como prioridade alta e a fila da plataforma ordena prioritários primeiro, depois os parados há mais tempo. A equipe responde (cliente recebe notificação e e-mail; chamado vai para "aguardando resposta") ou grava nota interna, que nunca sai na API do cliente. Resposta do cliente devolve o chamado à fila e notifica a plataforma. O cliente encerra e pode reabrir em até 7 dias. Feedback rápido (erro, sugestão, dúvida) disponível a qualquer pessoa da equipe, guardando só o caminho da página (sem query string). Permissão de plataforma `platform:support:manage`.
+
+**Limites:** sem anexos nos chamados, sem SLA medido nem resposta por e-mail (o cliente responde pelo painel).

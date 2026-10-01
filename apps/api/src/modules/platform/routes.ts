@@ -13,6 +13,8 @@ import {
   FEATURE_FLAGS,
   NotFoundError,
   PLATFORM_ROLES,
+  TICKET_PRIORITIES,
+  TICKET_STATUSES,
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { whatsappPriceTable } from '@botsaas/whatsapp';
@@ -32,6 +34,13 @@ import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
 import { replayBillingEvent } from '../billing/service';
+import {
+  getTicketForStaff,
+  listAllTickets,
+  listFeedback,
+  staffReply,
+  updateTicketForStaff,
+} from './support.service';
 import { resolveRange, usageBreakdown } from '../usage/breakdown';
 import { costByCompany, summarizeAiUsageByPeriod } from '../usage/report';
 import {
@@ -635,5 +644,61 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       await replayBillingEvent(container, actorOf(request), request.params.id);
       return { ok: true };
     },
+  );
+
+  // ── Suporte: fila de chamados e feedback ─────────────────────────────────
+  const supportGuard = platform('platform:support:manage');
+  app.get(
+    '/support/tickets',
+    {
+      preValidation: supportGuard,
+      schema: {
+        querystring: paginationQuerySchema.extend({
+          status: z.enum(TICKET_STATUSES).optional(),
+          companyId: z.uuid().optional(),
+          search: z.string().max(100).optional(),
+        }),
+      },
+    },
+    async (request) => listAllTickets(request.query),
+  );
+  app.get(
+    '/support/tickets/:id',
+    { preValidation: supportGuard, schema: { params: idParamSchema } },
+    async (request) => getTicketForStaff(request.params.id),
+  );
+  app.post(
+    '/support/tickets/:id/messages',
+    {
+      preValidation: supportGuard,
+      schema: {
+        params: idParamSchema,
+        body: z.object({
+          body: z.string().trim().min(2).max(5000),
+          internal: z.boolean().default(false),
+        }),
+      },
+    },
+    async (request) => staffReply(container, actorOf(request), request.params.id, request.body),
+  );
+  app.patch(
+    '/support/tickets/:id',
+    {
+      preValidation: supportGuard,
+      schema: {
+        params: idParamSchema,
+        body: z.object({
+          status: z.enum(TICKET_STATUSES).optional(),
+          priority: z.enum(TICKET_PRIORITIES).optional(),
+          assignedToMe: z.boolean().optional(),
+        }),
+      },
+    },
+    async (request) => updateTicketForStaff(actorOf(request), request.params.id, request.body),
+  );
+  app.get(
+    '/support/feedback',
+    { preValidation: supportGuard, schema: { querystring: paginationQuerySchema } },
+    async (request) => listFeedback(request.query),
   );
 };

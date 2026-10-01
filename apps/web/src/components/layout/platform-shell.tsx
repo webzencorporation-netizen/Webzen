@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, Building2, CreditCard, Gauge, Menu, Receipt, ShieldCheck, X } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, CreditCard, Gauge, LifeBuoy, Menu, Receipt, ShieldCheck, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -13,6 +13,7 @@ const NAV = [
   { href: '/platform', label: 'Empresas', icon: Building2 },
   { href: '/platform/plans', label: 'Planos', icon: CreditCard },
   { href: '/platform/billing', label: 'Cobrança', icon: Receipt },
+  { href: '/platform/support', label: 'Suporte', icon: LifeBuoy },
   { href: '/platform/usage', label: 'Uso', icon: Gauge },
   { href: '/platform/errors', label: 'Erros', icon: AlertTriangle },
   { href: '/platform/admin', label: 'Administração', icon: Activity },

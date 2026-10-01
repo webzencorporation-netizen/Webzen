@@ -54,6 +54,10 @@ describe('consistência do schema', () => {
     ['SubscriptionStatus', shared.SUBSCRIPTION_STATUSES],
     ['BillingInterval', shared.BILLING_INTERVALS],
     ['InvoiceStatus', shared.INVOICE_STATUSES],
+    ['TicketStatus', shared.TICKET_STATUSES],
+    ['TicketPriority', shared.TICKET_PRIORITIES],
+    ['TicketCategory', shared.TICKET_CATEGORIES],
+    ['FeedbackCategory', shared.FEEDBACK_CATEGORIES],
   ] as const)('enum %s idêntico ao do pacote shared', (name, values) => {
     const prismaEnum = (prismaEnums as unknown as Record<string, Record<string, string>>)[name];
     expect(prismaEnum, `enum ${name} ausente no Prisma`).toBeDefined();

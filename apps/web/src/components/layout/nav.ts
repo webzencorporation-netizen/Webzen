@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Contact,
   KanbanSquare,
+  LifeBuoy,
   LayoutDashboard,
   MessagesSquare,
   Package,
@@ -37,5 +38,6 @@ export const COMPANY_NAV: NavItem[] = [
   { href: '/app/integrations', label: 'Integrações', icon: Plug, permission: 'integrations:read' },
   { href: '/app/team', label: 'Equipe', icon: Users, permission: 'team:read' },
   { href: '/app/metrics', label: 'Métricas', icon: BarChart3, permission: 'reports:read' },
+  { href: '/app/support', label: 'Suporte', icon: LifeBuoy, permission: 'support:read' },
   { href: '/app/settings', label: 'Configurações', icon: Settings, permission: 'company:read' },
 ];

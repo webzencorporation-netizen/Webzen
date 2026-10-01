@@ -275,6 +275,37 @@ enum WebhookDeliveryStatus {
   FAILED
 }
 
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  BILLING
+  TECHNICAL
+  WHATSAPP
+  AI
+  ACCOUNT
+  OTHER
+}
+
+enum FeedbackCategory {
+  BUG
+  SUGGESTION
+  QUESTION
+  OTHER
+}
+
 enum BillingEventStatus {
   RECEIVED
   PROCESSED
@@ -379,38 +410,38 @@ model Session {
 }
 
 model Company {
-  id                 String              @id @default(uuid(7)) @db.Uuid
-  name               String
-  slug               String              @unique
-  templateKey        BusinessTemplateKey @default(GENERAL)
-  status             CompanyStatus       @default(ONBOARDING)
-  segment            String?
-  legalName          String?
-  document           String?
-  phone              String?
-  email              String?
-  website            String?
-  description        String?
+  id                   String              @id @default(uuid(7)) @db.Uuid
+  name                 String
+  slug                 String              @unique
+  templateKey          BusinessTemplateKey @default(GENERAL)
+  status               CompanyStatus       @default(ONBOARDING)
+  segment              String?
+  legalName            String?
+  document             String?
+  phone                String?
+  email                String?
+  website              String?
+  description          String?
   /// { street, number, complement, district, city, state, zip, country, mapsUrl }
-  address            Json?
-  timezone           String              @default("America/Sao_Paulo")
-  locale             String              @default("pt-BR")
-  currency           String              @default("BRL")
+  address              Json?
+  timezone             String              @default("America/Sao_Paulo")
+  locale               String              @default("pt-BR")
+  currency             String              @default("BRL")
   /// Horário semanal: [{ weekday: 0-6, open: "08:00", close: "18:00", breaks: [{start,end}] }]
-  businessHours      Json?
+  businessHours        Json?
   /// Etapas do onboarding concluídas (chaves) e etapa atual.
-  onboardingState    Json?
-  onboardingDoneAt   DateTime?           @db.Timestamptz(6)
+  onboardingState      Json?
+  onboardingDoneAt     DateTime?           @db.Timestamptz(6)
   /// Retenção de dados definida pela empresa (LGPD). Nulo = sem expurgo automático.
   messageRetentionDays Int?
   /// Código de indicação informado no cadastro (programa de indicação futuro).
-  signupReferralCode String?
+  signupReferralCode   String?
   /// Cliente no gateway de cobrança (Stripe `cus_...`).
-  billingCustomerId  String?             @unique
-  activatedAt        DateTime?           @db.Timestamptz(6)
-  suspendedReason    String?
-  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+  billingCustomerId    String?             @unique
+  activatedAt          DateTime?           @db.Timestamptz(6)
+  suspendedReason      String?
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(6)
 
   members            CompanyMember[]
   holidays           Holiday[]
@@ -446,6 +477,9 @@ model Company {
   apiKeys            ApiKey[]
   webhookEndpoints   WebhookEndpoint[]
   webhookDeliveries  WebhookDelivery[]
+  supportTickets     SupportTicket[]
+  ticketMessages     SupportTicketMessage[]
+  feedback           Feedback[]
   billingEvents      BillingEvent[]
   featureFlags       CompanyFeatureFlag[]
   automations        Automation[]
@@ -765,18 +799,18 @@ model ContactMemory {
 }
 
 model CustomFieldDefinition {
-  id              String            @id @default(uuid(7)) @db.Uuid
-  companyId       String            @db.Uuid
-  target          CustomFieldTarget
-  key             String
-  label           String
-  type            CustomFieldType   @default(TEXT)
-  options         String[]          @default([])
+  id             String            @id @default(uuid(7)) @db.Uuid
+  companyId      String            @db.Uuid
+  target         CustomFieldTarget
+  key            String
+  label          String
+  type           CustomFieldType   @default(TEXT)
+  options        String[]          @default([])
   /// O agente deve tentar coletar este campo naturalmente durante a conversa.
-  collectByAgent  Boolean           @default(false)
-  agentHint       String?
-  position        Int               @default(0)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  collectByAgent Boolean           @default(false)
+  agentHint      String?
+  position       Int               @default(0)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -957,18 +991,18 @@ model ConversationSummary {
 }
 
 model Handoff {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  companyId      String           @db.Uuid
-  conversationId String           @db.Uuid
-  requestedBy    HandoffRequester
-  requestedById  String?          @db.Uuid
-  reason         String
-  acceptedById   String?          @db.Uuid
-  acceptedAt     DateTime?        @db.Timestamptz(6)
-  resolvedAt     DateTime?        @db.Timestamptz(6)
+  id                String           @id @default(uuid(7)) @db.Uuid
+  companyId         String           @db.Uuid
+  conversationId    String           @db.Uuid
+  requestedBy       HandoffRequester
+  requestedById     String?          @db.Uuid
+  reason            String
+  acceptedById      String?          @db.Uuid
+  acceptedAt        DateTime?        @db.Timestamptz(6)
+  resolvedAt        DateTime?        @db.Timestamptz(6)
   /// Resumo do atendimento humano gerado ao devolver para a IA.
   resolutionSummary String?
-  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
 
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -982,20 +1016,20 @@ model Handoff {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Service {
-  id              String   @id @default(uuid(7)) @db.Uuid
-  companyId       String   @db.Uuid
-  name            String
-  description     String?
-  category        String?
-  priceCents      Int?
+  id               String   @id @default(uuid(7)) @db.Uuid
+  companyId        String   @db.Uuid
+  name             String
+  description      String?
+  category         String?
+  priceCents       Int?
   /// Ex.: "a partir de", "sob avaliação".
-  priceNote       String?
+  priceNote        String?
   /// O agente só informa preço quando autorizado.
-  priceVisibleToAi Boolean @default(true)
-  durationMinutes Int?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  priceVisibleToAi Boolean  @default(true)
+  durationMinutes  Int?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   appointments Appointment[]
@@ -1061,7 +1095,7 @@ model KnowledgeEntry {
   documentId   String?                  @db.Uuid
   chunkIndex   Int?
   /// Coluna gerada (tsvector português + unaccent) — definida na migração SQL.
-  searchVector Unsupported("tsvector")?    @default(dbgenerated("knowledge_search_vector(title, content, tags)"))
+  searchVector Unsupported("tsvector")? @default(dbgenerated("knowledge_search_vector(title, content, tags)"))
   createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime                 @updatedAt @db.Timestamptz(6)
 
@@ -1266,14 +1300,14 @@ model BillingEvent {
 
 /// Sobrescrita de limite por empresa (prevalece sobre o plano).
 model UsageLimit {
-  id              String      @id @default(uuid(7)) @db.Uuid
-  companyId       String      @db.Uuid
-  metric          UsageMetric
+  id             String      @id @default(uuid(7)) @db.Uuid
+  companyId      String      @db.Uuid
+  metric         UsageMetric
   /// Nulo = ilimitado.
-  limitValue      Decimal?    @db.Decimal(14, 4)
-  warningPercent  Int         @default(80)
-  createdAt       DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
+  limitValue     Decimal?    @db.Decimal(14, 4)
+  warningPercent Int         @default(80)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1547,4 +1581,67 @@ model WebhookDelivery {
   @@unique([endpointId, eventId])
   @@index([companyId, createdAt])
   @@index([endpointId, createdAt])
+}
+
+/// Chamado de suporte aberto por uma empresa e atendido pela equipe WebZen.
+model SupportTicket {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  companyId       String         @db.Uuid
+  /// Número legível para o cliente citar ("chamado #1042").
+  number          Int            @unique @default(autoincrement())
+  subject         String
+  category        TicketCategory
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  /// Plano com suporte prioritário no momento da abertura (ordena a fila da plataforma).
+  prioritySupport Boolean        @default(false)
+  createdById     String?        @db.Uuid
+  assignedToId    String?        @db.Uuid
+  lastMessageAt   DateTime       @default(now()) @db.Timestamptz(6)
+  resolvedAt      DateTime?      @db.Timestamptz(6)
+  closedAt        DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  company  Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  @@index([companyId, createdAt])
+  @@index([status, prioritySupport, lastMessageAt])
+}
+
+model SupportTicketMessage {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  companyId    String   @db.Uuid
+  ticketId     String   @db.Uuid
+  authorUserId String?  @db.Uuid
+  authorName   String
+  /// Mensagem da equipe WebZen (true) ou do cliente (false).
+  fromStaff    Boolean  @default(false)
+  /// Nota interna da equipe WebZen: nunca aparece para o cliente.
+  isInternal   Boolean  @default(false)
+  body         String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ticket  SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+/// Feedback rápido enviado de dentro do painel.
+model Feedback {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  companyId String           @db.Uuid
+  userId    String?          @db.Uuid
+  category  FeedbackCategory
+  message   String
+  /// Página do painel de onde veio (caminho, sem query string).
+  page      String?
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([companyId, createdAt])
 }

@@ -163,6 +163,18 @@ export const emailTemplates = {
     });
   },
 
+  ticketReply(input: { name: string; number: number; subject: string; url: string }) {
+    return render(`Resposta no chamado #${input.number} — WebZen`, {
+      preheader: 'A equipe WebZen respondeu seu chamado.',
+      heading: `Chamado #${input.number} respondido`,
+      paragraphs: [
+        `Olá, ${input.name}.`,
+        `A equipe WebZen respondeu o chamado "${input.subject}".`,
+      ],
+      action: { label: 'Ver resposta', url: input.url },
+    });
+  },
+
   paymentSucceeded(input: { companyName: string; amount: string; planName: string; url: string }) {
     return render('Pagamento confirmado — WebZen', {
       preheader: `Recebemos ${input.amount}.`,

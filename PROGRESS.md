@@ -213,6 +213,10 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Bug evitado antes do commit: bloqueio de todo IPv4 pela regra de IPv4 mapeado no BlockList.
   - Validação: lint, typecheck, 667 testes (26 novos), build e smoke dos bundles verdes.
 
+- **Suporte por chamados e feedback (2026-10-01, D-042)**
+  - Chamados com categoria, status e prioridade; fila da plataforma com prioritários primeiro, resposta, nota interna, mudança de status/prioridade; e-mail e notificação ao cliente; reabertura em até 7 dias; feedback no menu do usuário.
+  - Teste manual no navegador: abrir chamado → página do chamado. 4 testes de API novos (fila, nota interna invisível, isolamento/permissões, reabertura).
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.
