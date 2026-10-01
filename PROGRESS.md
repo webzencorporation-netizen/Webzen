@@ -217,6 +217,8 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Chamados com categoria, status e prioridade; fila da plataforma com prioritários primeiro, resposta, nota interna, mudança de status/prioridade; e-mail e notificação ao cliente; reabertura em até 7 dias; feedback no menu do usuário.
   - Teste manual no navegador: abrir chamado → página do chamado. 4 testes de API novos (fila, nota interna invisível, isolamento/permissões, reabertura).
 
+- **Indicadores do negócio na plataforma (2026-10-01, D-043)**: MRR/ARR, recebido no mês, assinantes, cancelamentos e churn, empresas, usuários ativos, bots no ar, mensagens e custo de IA, receita por plano e receita × custo de IA por empresa. Fluxo 7 verificado no navegador. 2 testes novos com valores conferidos à mão.
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

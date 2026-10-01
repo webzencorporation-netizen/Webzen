@@ -411,3 +411,9 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Decisão:** chamados (`SupportTicket` + `SupportTicketMessage`) com categoria, status (`OPEN`, `IN_PROGRESS`, `WAITING_USER`, `RESOLVED`, `CLOSED`) e prioridade. Abertura com `support:write` (gerente para cima); plano com `PRIORITY_SUPPORT` abre como prioridade alta e a fila da plataforma ordena prioritários primeiro, depois os parados há mais tempo. A equipe responde (cliente recebe notificação e e-mail; chamado vai para "aguardando resposta") ou grava nota interna, que nunca sai na API do cliente. Resposta do cliente devolve o chamado à fila e notifica a plataforma. O cliente encerra e pode reabrir em até 7 dias. Feedback rápido (erro, sugestão, dúvida) disponível a qualquer pessoa da equipe, guardando só o caminho da página (sem query string). Permissão de plataforma `platform:support:manage`.
 
 **Limites:** sem anexos nos chamados, sem SLA medido nem resposta por e-mail (o cliente responde pelo painel).
+
+## D-043 — Indicadores do negócio na plataforma
+
+**Decisão:** `GET /api/platform/metrics/saas` e `/metrics/economics` (permissão `platform:usage:read`) e a tela **Indicadores**. MRR = soma dos preços de tabela das assinaturas pagantes (`ACTIVE`/`PAST_DUE`; anual ÷ 12), ARR = MRR × 12, receita efetiva = faturas pagas no mês, churn = cancelamentos do mês ÷ pagantes no início do mês, receita e clientes por plano, usuários ativos em 30 dias, bots no ar (IA ligada e WhatsApp conectado), mensagens e custo de IA do mês. Receita × custo de IA por empresa nos últimos 30 dias, em moedas separadas (R$ e US$), sem câmbio inventado. Nada é estimado fora do que está no banco.
+
+**Limites:** MRR não desconta cupons (a receita efetiva sim). Sem série histórica (cada consulta é o retrato do momento).

@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, Building2, CreditCard, Gauge, LifeBuoy, Menu, Receipt, ShieldCheck, X } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, CreditCard, Gauge, LifeBuoy, LineChart, Menu, Receipt, ShieldCheck, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -10,6 +10,7 @@ import { useRequireSession } from '@/lib/session';
 import { UserMenu } from './user-menu';
 
 const NAV = [
+  { href: '/platform/overview', label: 'Indicadores', icon: LineChart },
   { href: '/platform', label: 'Empresas', icon: Building2 },
   { href: '/platform/plans', label: 'Planos', icon: CreditCard },
   { href: '/platform/billing', label: 'Cobrança', icon: Receipt },

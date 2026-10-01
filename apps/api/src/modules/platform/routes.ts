@@ -34,6 +34,7 @@ import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
 import { replayBillingEvent } from '../billing/service';
+import { getCompanyEconomics, getSaasMetrics } from './metrics.service';
 import {
   getTicketForStaff,
   listAllTickets,
@@ -700,5 +701,13 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     '/support/feedback',
     { preValidation: supportGuard, schema: { querystring: paginationQuerySchema } },
     async (request) => listFeedback(request.query),
+  );
+
+  // ── Indicadores do negócio ────────────────────────────────────────────────
+  app.get('/metrics/saas', { preValidation: platform('platform:usage:read') }, async () =>
+    getSaasMetrics(),
+  );
+  app.get('/metrics/economics', { preValidation: platform('platform:usage:read') }, async () =>
+    getCompanyEconomics(),
   );
 };
