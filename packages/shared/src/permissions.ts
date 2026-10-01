@@ -141,3 +141,11 @@ export function platformRoleHasPermission(
 ): boolean {
   return PLATFORM_ROLE_PERMISSIONS[role].has(permission);
 }
+
+export const COMPANY_ROLE_LABELS: Record<CompanyRole, string> = {
+  COMPANY_OWNER: 'Proprietário',
+  COMPANY_ADMIN: 'Administrador',
+  MANAGER: 'Gerente',
+  ATTENDANT: 'Atendente',
+  VIEWER: 'Somente leitura',
+};

@@ -3,6 +3,9 @@ import { AnthropicProvider, MetaModelProvider, MockAIProvider, type AIProvider }
 import {
   DisabledSpeechToText,
   LocalObjectStorage,
+  LogEmailSender,
+  SmtpEmailSender,
+  type EmailSender,
   MockSpeechToText,
   OpenAICompatibleSpeechToText,
   S3ObjectStorage,
@@ -18,6 +21,7 @@ export interface Providers {
   messaging: MessagingProvider;
   storage: ObjectStorageProvider;
   speechToText: SpeechToTextProvider;
+  email: EmailSender;
 }
 
 /** Falha de composição: um provider real foi pedido mas não pode ser construído. */
@@ -74,13 +78,28 @@ export function createProviders(env: Env, logger: Logger): Providers {
     });
   }
 
+  const email: EmailSender =
+    env.EMAIL_PROVIDER === 'smtp'
+      ? new SmtpEmailSender({
+          host: env.SMTP_HOST ?? missing('EMAIL_PROVIDER=smtp', 'SMTP_HOST'),
+          port: env.SMTP_PORT,
+          secure: env.SMTP_SECURE,
+          user: env.SMTP_USER,
+          password: env.SMTP_PASSWORD,
+          from: env.EMAIL_FROM,
+        })
+      : new LogEmailSender(env.EMAIL_LOG_DIR);
+
   const summary = {
     ai: ai.name,
     messaging: messaging.name,
     storage: storage.name,
     speechToText: speechToText.name,
+    email: email.name,
   };
-  const mocks = Object.entries(summary).filter(([, name]) => name === 'mock' || name === 'local');
+  const mocks = Object.entries(summary).filter(
+    ([, name]) => name === 'mock' || name === 'local' || name === 'log',
+  );
   if (mocks.length > 0 && env.NODE_ENV === 'production') {
     throw new Error(
       `Providers simulados/locais recusados em produção: ${mocks.map(([kind, name]) => `${kind}=${name}`).join(', ')}.`,
@@ -94,5 +113,5 @@ export function createProviders(env: Env, logger: Logger): Providers {
   } else {
     logger.info({ providers: summary }, 'Providers ativos');
   }
-  return { ai, messaging, storage, speechToText };
+  return { ai, messaging, storage, speechToText, email };
 }

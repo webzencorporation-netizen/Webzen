@@ -3,6 +3,8 @@ import { usageThresholdReached, type UsageMetric } from '@botsaas/shared';
 import type { AppContainer } from '../../container';
 import { systemScope } from '../../lib/scope';
 import { monthStart } from '../../lib/time';
+import { queueEmail } from '../email/service';
+import { emailTemplates } from '../email/templates';
 import { getUsageStatus } from './limits';
 
 /** Métricas que acompanham o mês; as demais (usuários, números...) são capacidade fixa. */
@@ -30,7 +32,7 @@ export async function checkUsageAlerts(
 ): Promise<UsageAlertResult> {
   const companies = await systemDb.company.findMany({
     where: { status: { in: ['ONBOARDING', 'ACTIVE'] } },
-    select: { id: true, timezone: true },
+    select: { id: true, name: true, timezone: true },
   });
   let created = 0;
   for (const company of companies) {
@@ -63,6 +65,26 @@ export async function checkUsageAlerts(
         },
       });
       created += 1;
+      // Por e-mail só os limiares que pedem ação (90% e 100%), para quem decide o plano.
+      if (threshold >= 90) {
+        const admins = await scope.db.companyMember.findMany({
+          where: { isActive: true, role: { in: ['COMPANY_OWNER', 'COMPANY_ADMIN'] } },
+          select: { user: { select: { email: true, isActive: true } } },
+        });
+        for (const admin of admins.filter((member) => member.user.isActive)) {
+          await queueEmail(container, {
+            to: admin.user.email,
+            template: 'usageLimit',
+            email: emailTemplates.usageLimit({
+              companyName: company.name,
+              metricLabel: metric.label,
+              usage,
+              percent: threshold,
+              url: `${container.env.APP_URL}/app/settings/billing`,
+            }),
+          });
+        }
+      }
     }
   }
   return { companies: companies.length, created };

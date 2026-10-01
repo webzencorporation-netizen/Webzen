@@ -8,7 +8,7 @@ import {
   type PlatformRole,
 } from '@botsaas/database';
 import { truncateAllTables } from '@botsaas/database/testing';
-import { MemoryObjectStorage, MockSpeechToText } from '@botsaas/integrations';
+import { MemoryEmailSender, MemoryObjectStorage, MockSpeechToText } from '@botsaas/integrations';
 import type { BusinessTemplateKey } from '@botsaas/shared';
 import { MockMessagingProvider } from '@botsaas/whatsapp';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
@@ -28,6 +28,7 @@ export interface TestHarness {
   ai: MockAIProvider;
   messaging: MockMessagingProvider;
   storage: MemoryObjectStorage;
+  email: MemoryEmailSender;
   reset(): Promise<void>;
   close(): Promise<void>;
 }
@@ -39,11 +40,12 @@ export async function createTestHarness(): Promise<TestHarness> {
   const ai = new MockAIProvider();
   const messaging = new MockMessagingProvider();
   const storage = new MemoryObjectStorage();
+  const email = new MemoryEmailSender();
   const container = createContainer({
     env,
     logger: pino({ level: 'silent' }),
     queue,
-    providers: { ai, messaging, storage, speechToText: new MockSpeechToText() },
+    providers: { ai, messaging, storage, email, speechToText: new MockSpeechToText() },
   });
   const app = await buildApp(container);
   await app.ready();
@@ -54,6 +56,7 @@ export async function createTestHarness(): Promise<TestHarness> {
     ai,
     messaging,
     storage,
+    email,
     async reset() {
       await truncateAllTables(getSystemDb());
       await seedReferenceData();
@@ -61,6 +64,7 @@ export async function createTestHarness(): Promise<TestHarness> {
       ai.reset();
       messaging.reset();
       storage.objects.clear();
+      email.reset();
     },
     async close() {
       await app.close();
@@ -80,6 +84,7 @@ export async function createUser(input: {
       name: input.name ?? input.email.split('@')[0] ?? 'Usuário',
       passwordHash: await hashPassword(input.password ?? DEFAULT_PASSWORD),
       platformRole: input.platformRole ?? null,
+      emailVerifiedAt: new Date(),
     },
   });
 }

@@ -45,7 +45,13 @@ async function upsertUser(
   const existing = await systemDb.user.findUnique({ where: { email } });
   if (existing) return existing;
   return systemDb.user.create({
-    data: { email, name, passwordHash: await hashPassword(password), platformRole },
+    data: {
+      email,
+      name,
+      passwordHash: await hashPassword(password),
+      platformRole,
+      emailVerifiedAt: new Date(),
+    },
   });
 }
 

@@ -561,6 +561,7 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
               passwordHash: await hashPassword(request.body.password),
               platformRole: request.body.platformRole,
               mustChangePassword: true,
+              emailVerifiedAt: new Date(),
             },
           });
       await auditPlatform(actorOf(request), {

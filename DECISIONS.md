@@ -336,3 +336,23 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Contexto:** no Zod 4, `.partial()` mantém os `.default()`. Seis rotas PATCH usavam `schema.partial()`: um PATCH só com o nome regravava os padrões por cima dos valores atuais. Confirmado em automações (reativava e apagava as condições), entradas de conhecimento (FAQ virava texto) e planos (plano desativado era reativado em qualquer edição).
 
 **Decisão:** helper `patchSchema()` em `lib/http.ts` remove os defaults do topo e torna tudo opcional; todas as rotas PATCH passaram a usá-lo. Testes de regressão em `patch-defaults.test.ts` e `plans-billing-access.test.ts`.
+
+## D-037 — Contas self-service: cadastro, confirmação de e-mail, recuperação de senha, convites e sessões
+
+**Contexto:** só a plataforma criava empresas; não havia recuperação de senha (dependia do administrador), verificação de e-mail, convite por e-mail (a equipe recebia senha provisória exibida a quem cadastrava), expiração por inatividade nem tela de sessões.
+
+**Decisão:**
+
+- Cadastro público cria pessoa (e-mail não confirmado), empresa e assinatura `INCOMPLETE` no plano escolhido; nada de sessão até confirmar o e-mail. Resposta idêntica (e com o mesmo custo de CPU) para e-mail já cadastrado, cujo dono recebe um aviso. Teste grátis (`BILLING_TRIAL_DAYS`, padrão 0) começa na confirmação do e-mail, um por pessoa (`User.trialUsedAt`).
+- Tokens de uso único só com hash (`AuthToken`), vinculados ao e-mail de emissão; redefinir a senha encerra todas as sessões.
+- Convites (`Invitation`) com token de uso único; o aceite por token mora em `modules/auth` (lint proíbe `systemDb` em módulos de empresa) e só usa empresa/papel do próprio convite.
+- Expiração por inatividade (`SESSION_IDLE_TIMEOUT_HOURS`) e gestão das próprias sessões.
+- O cadastro antigo de membro com senha provisória continua disponível na API (compatibilidade); o painel passa a usar convites.
+
+**Limites:** sem 2FA. Cadastros nunca confirmados não são apagados automaticamente. A localização da sessão não é exibida (só IP e dispositivo).
+
+## D-038 — E-mail transacional por fila, SMTP genérico
+
+**Contexto:** o sistema não enviava e-mail. Decisão do responsável: SMTP genérico.
+
+**Decisão:** contrato `EmailSender` em `packages/integrations` (`SmtpEmailSender` com TLS exigido fora da 465, timeouts e `disableFileAccess/disableUrlAccess`; `LogEmailSender` grava `.html` em desenvolvimento; `MemoryEmailSender` nos testes). Produção recusa `log` e remetente `.local`. Mensagens vão para `EmailOutbox` e saem pelo job `email.send`; o corpo é apagado após envio ou falha final. Templates WebZen em `modules/email/templates.ts`, com escape de todo valor dinâmico. `nodemailer` 10 (as versões ≤ 10.0.5 têm alertas altos no `pnpm audit`).

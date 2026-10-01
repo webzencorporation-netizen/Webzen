@@ -185,6 +185,12 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Bug corrigido: PATCH parcial regravava defaults (automações, conhecimento, planos).
   - Validação: lint, typecheck e suíte completa verdes (testes novos: catálogo, seed, acesso, avisos, automações, PATCH).
 
+- **Contas self-service e e-mail transacional (2026-10-01, D-037/D-038)**
+  - API de cadastro público, confirmação de e-mail com login, reenvio, "esqueci a senha", redefinição, convites de equipe por e-mail, sessões ativas e expiração por inatividade. Nenhuma resposta revela se um e-mail tem cadastro; limites por IP e por destinatário.
+  - E-mail por fila com SMTP genérico (log em desenvolvimento), templates WebZen escapados; avisos de consumo de 90/100% também por e-mail aos administradores.
+  - Migração `accounts_email` (aditiva; contas existentes marcadas como confirmadas). Variáveis novas no `.env.example`.
+  - Validação: lint, typecheck, suíte completa (API 273 testes), build e smoke dos três bundles verdes. Bug de build pego pelo smoke: `nodemailer` precisava ser declarado na API (D-016).
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

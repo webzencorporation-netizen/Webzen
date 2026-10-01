@@ -63,6 +63,7 @@ describe('createProviders', () => {
     [{ AI_PROVIDER: 'meta' }, /META_MODEL_API_KEY/],
     [{ STORAGE_PROVIDER: 's3' }, /S3_BUCKET/],
     [{ STT_PROVIDER: 'openai-compatible', STT_API_KEY: 'x' }, /STT_API_URL/],
+    [{ EMAIL_PROVIDER: 'smtp' }, /SMTP_HOST/],
   ])('provider real incompleto falha em vez de cair na simulação: %o', (values, message) => {
     expect(() => createProviders(env(values), logger)).toThrow(message);
   });
@@ -72,6 +73,7 @@ describe('createProviders', () => {
     { WHATSAPP_PROVIDER: 'mock' },
     { STT_PROVIDER: 'mock' },
     { STORAGE_PROVIDER: 'local' },
+    { EMAIL_PROVIDER: 'log' },
   ])('produção recusa simulação mesmo sem a validação do env: %o', (override) => {
     const production = {
       NODE_ENV: 'production',
@@ -80,6 +82,8 @@ describe('createProviders', () => {
       WHATSAPP_PROVIDER: 'cloud',
       STORAGE_PROVIDER: 's3',
       S3_BUCKET: 'bucket',
+      EMAIL_PROVIDER: 'smtp',
+      SMTP_HOST: 'smtp.example.test',
     };
     expect(() => createProviders(env(production), logger)).not.toThrow();
     expect(() => createProviders(env({ ...production, ...override }), logger)).toThrow(/produção/);

@@ -23,6 +23,9 @@ const production: NodeJS.ProcessEnv = {
   STORAGE_PROVIDER: 's3',
   S3_BUCKET: 'fixture-bucket',
   ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+  EMAIL_PROVIDER: 'smtp',
+  EMAIL_FROM: 'WebZen <nao-responda@webzen.example>',
+  SMTP_HOST: 'smtp.example.test',
 };
 
 afterEach(() => {
@@ -78,6 +81,9 @@ describe('configuração de ambiente', () => {
     ['STT_PROVIDER', 'mock'],
     ['STORAGE_PROVIDER', 'local'],
     ['ENCRYPTION_KEY', undefined],
+    ['EMAIL_PROVIDER', 'log'],
+    ['BILLING_PROVIDER', 'mock'],
+    ['EMAIL_FROM', 'WebZen <nao-responda@webzen.local>'],
   ])('recusa configuração insegura de produção: %s=%s', (name, value) => {
     expect(() => parseEnv({ ...production, [name]: value })).toThrow(name);
   });
@@ -93,6 +99,7 @@ describe('configuração de ambiente', () => {
     ['WHATSAPP_APP_SECRET'],
     ['WHATSAPP_WEBHOOK_VERIFY_TOKEN'],
     ['S3_BUCKET'],
+    ['SMTP_HOST'],
   ])('exige %s quando seu provider real está selecionado', (name) => {
     expect(() => parseEnv({ ...production, NODE_ENV: 'development', [name]: undefined })).toThrow(
       name,
@@ -227,5 +234,23 @@ describe('configuração de ambiente', () => {
     expect(getEnv().AI_DEFAULT_MODEL).toBe('fixture-model-a');
     resetEnvCache();
     expect(getEnv().AI_DEFAULT_MODEL).toBe('fixture-model-b');
+  });
+
+  it('Stripe exige chave secreta e segredo do webhook com o formato oficial', () => {
+    const stripe = { ...local, BILLING_PROVIDER: 'stripe' };
+    expect(() => parseEnv(stripe)).toThrow(/STRIPE_SECRET_KEY/);
+    expect(() =>
+      parseEnv({ ...stripe, STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: 'segredo' }),
+    ).toThrow(/STRIPE_WEBHOOK_SECRET/);
+    expect(
+      parseEnv({ ...stripe, STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: 'whsec_x' })
+        .BILLING_PROVIDER,
+    ).toBe('stripe');
+  });
+
+  it('SMTP com usuário exige a senha (e vice-versa)', () => {
+    expect(() =>
+      parseEnv({ ...local, EMAIL_PROVIDER: 'smtp', SMTP_HOST: 'smtp.test', SMTP_USER: 'u' }),
+    ).toThrow(/SMTP_PASSWORD/);
   });
 });

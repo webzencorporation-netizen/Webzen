@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { idParamSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
+import * as invitations from './invitations';
 import * as team from './service';
 
 export const teamRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -50,6 +51,47 @@ export const teamRoutes: FastifyPluginAsyncZod = async (app) => {
     { preValidation: company('team:manage'), schema: { params: idParamSchema } },
     async (request) => {
       await team.removeMember(scopeFromRequest(request), request.params.id);
+      return { ok: true };
+    },
+  );
+
+  // ── Convites por e-mail ───────────────────────────────────────────────────
+  app.get('/invitations', { preValidation: company('team:read') }, async (request) =>
+    invitations.listInvitations(scopeFromRequest(request)),
+  );
+
+  app.post(
+    '/invitations',
+    {
+      preValidation: company('team:manage'),
+      schema: {
+        body: z.object({
+          email: z.string().trim().toLowerCase().max(200).pipe(z.email()),
+          role: z.enum(COMPANY_ROLES),
+        }),
+      },
+      config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    },
+    async (request, reply) =>
+      reply
+        .status(201)
+        .send(await invitations.createInvitation(scopeFromRequest(request), request.body)),
+  );
+
+  app.post(
+    '/invitations/:id/resend',
+    { preValidation: company('team:manage'), schema: { params: idParamSchema } },
+    async (request) => {
+      await invitations.resendInvitation(scopeFromRequest(request), request.params.id);
+      return { ok: true };
+    },
+  );
+
+  app.delete(
+    '/invitations/:id',
+    { preValidation: company('team:manage'), schema: { params: idParamSchema } },
+    async (request) => {
+      await invitations.revokeInvitation(scopeFromRequest(request), request.params.id);
       return { ok: true };
     },
   );

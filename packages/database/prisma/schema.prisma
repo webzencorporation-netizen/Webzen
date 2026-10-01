@@ -258,6 +258,17 @@ enum InvoiceStatus {
   UNCOLLECTIBLE
 }
 
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
 enum BillingEventStatus {
   RECEIVED
   PROCESSED
@@ -323,12 +334,16 @@ model User {
   mustChangePassword Boolean       @default(false)
   /// Um teste grátis por pessoa: preenchido quando o usuário inicia o primeiro trial.
   trialUsedAt        DateTime?     @db.Timestamptz(6)
+  /// Nulo = e-mail ainda não confirmado (cadastro público). Contas criadas pela plataforma
+  /// ou por convite já nascem confirmadas.
+  emailVerifiedAt    DateTime?     @db.Timestamptz(6)
   lastLoginAt        DateTime?     @db.Timestamptz(6)
   createdAt          DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime      @updatedAt @db.Timestamptz(6)
 
   memberships       CompanyMember[]
   sessions          Session[]
+  authTokens        AuthToken[]
   assignedContacts  Contact[]          @relation("ContactAssignee")
   assignedConvs     Conversation[]     @relation("ConversationAssignee")
   assignedLeads     Lead[]             @relation("LeadAssignee")
@@ -382,6 +397,8 @@ model Company {
   onboardingDoneAt   DateTime?           @db.Timestamptz(6)
   /// Retenção de dados definida pela empresa (LGPD). Nulo = sem expurgo automático.
   messageRetentionDays Int?
+  /// Código de indicação informado no cadastro (programa de indicação futuro).
+  signupReferralCode String?
   /// Cliente no gateway de cobrança (Stripe `cus_...`).
   billingCustomerId  String?             @unique
   activatedAt        DateTime?           @db.Timestamptz(6)
@@ -419,6 +436,7 @@ model Company {
   usageLimits        UsageLimit[]
   subscription       Subscription?
   invoices           Invoice[]
+  invitations        Invitation[]
   billingEvents      BillingEvent[]
   featureFlags       CompanyFeatureFlag[]
   automations        Automation[]
@@ -1393,4 +1411,60 @@ model ErrorLog {
 
   @@index([companyId, createdAt])
   @@index([createdAt])
+}
+
+/// Tokens de uso único enviados por e-mail (confirmação e redefinição de senha). Só o hash é guardado.
+model AuthToken {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  userId    String        @db.Uuid
+  type      AuthTokenType
+  tokenHash String        @unique
+  /// E-mail para o qual o token foi emitido: se o e-mail do usuário mudar, o token deixa de valer.
+  email     String
+  expiresAt DateTime      @db.Timestamptz(6)
+  usedAt    DateTime?     @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+}
+
+/// Convite para a equipe de uma empresa. Token de uso único (só o hash), com prazo e revogável.
+model Invitation {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  companyId      String      @db.Uuid
+  email          String
+  role           CompanyRole
+  tokenHash      String      @unique
+  invitedById    String?     @db.Uuid
+  expiresAt      DateTime    @db.Timestamptz(6)
+  acceptedAt     DateTime?   @db.Timestamptz(6)
+  acceptedUserId String?     @db.Uuid
+  revokedAt      DateTime?   @db.Timestamptz(6)
+  lastSentAt     DateTime    @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([email])
+}
+
+/// Fila de e-mails transacionais. O corpo é apagado depois do envio (pode conter links com token).
+model EmailOutbox {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  toEmail   String
+  template  String
+  subject   String
+  html      String?
+  text      String?
+  status    EmailStatus @default(PENDING)
+  attempts  Int         @default(0)
+  lastError String?
+  sentAt    DateTime?   @db.Timestamptz(6)
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+
+  @@index([status, createdAt])
 }

@@ -27,8 +27,14 @@ export async function createSession(input: {
   return { token, expiresAt };
 }
 
-/** Carrega a sessão pelo token do cookie. Sessões expiradas ou de usuários inativos são descartadas. */
-export async function loadSession(token: string): Promise<AuthContext | null> {
+/**
+ * Carrega a sessão pelo token do cookie. Sessões expiradas, paradas há mais que
+ * `idleTimeoutMs` ou de usuários inativos são descartadas.
+ */
+export async function loadSession(
+  token: string,
+  options: { idleTimeoutMs?: number } = {},
+): Promise<AuthContext | null> {
   if (!token || token.length > 200) return null;
   const session = await systemDb.session.findUnique({
     where: { tokenHash: sha256(token) },
@@ -36,7 +42,10 @@ export async function loadSession(token: string): Promise<AuthContext | null> {
   });
   if (!session) return null;
   const now = Date.now();
-  if (session.expiresAt.getTime() <= now || !session.user.isActive) {
+  const idle =
+    options.idleTimeoutMs !== undefined &&
+    now - session.lastSeenAt.getTime() > options.idleTimeoutMs;
+  if (session.expiresAt.getTime() <= now || idle || !session.user.isActive) {
     await systemDb.session.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
@@ -72,4 +81,49 @@ export async function destroyUserSessions(userId: string, exceptSessionId?: stri
   await systemDb.session.deleteMany({
     where: { userId, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
   });
+}
+
+/** Rótulo legível do navegador/sistema a partir do User-Agent (sem guardar nada além dele). */
+export function describeUserAgent(userAgent: string | null): string {
+  if (!userAgent) return 'Dispositivo desconhecido';
+  const browser = /Edg\//.test(userAgent)
+    ? 'Edge'
+    : /OPR\//.test(userAgent)
+      ? 'Opera'
+      : /Firefox\//.test(userAgent)
+        ? 'Firefox'
+        : /Chrome\//.test(userAgent)
+          ? 'Chrome'
+          : /Safari\//.test(userAgent)
+            ? 'Safari'
+            : 'Navegador';
+  const system = /iPhone|iPad/.test(userAgent)
+    ? 'iOS'
+    : /Android/.test(userAgent)
+      ? 'Android'
+      : /Windows/.test(userAgent)
+        ? 'Windows'
+        : /Mac OS X/.test(userAgent)
+          ? 'macOS'
+          : /Linux/.test(userAgent)
+            ? 'Linux'
+            : null;
+  return system ? `${browser} no ${system}` : browser;
+}
+
+/** Sessões válidas do usuário, para a tela de segurança. Nunca expõe o hash do token. */
+export async function listUserSessions(userId: string, currentSessionId: string) {
+  const sessions = await systemDb.session.findMany({
+    where: { userId, expiresAt: { gt: new Date() } },
+    orderBy: { lastSeenAt: 'desc' },
+    select: { id: true, ip: true, userAgent: true, lastSeenAt: true, createdAt: true },
+  });
+  return sessions.map((session) => ({
+    id: session.id,
+    device: describeUserAgent(session.userAgent),
+    ip: session.ip,
+    lastSeenAt: session.lastSeenAt,
+    createdAt: session.createdAt,
+    current: session.id === currentSessionId,
+  }));
 }
