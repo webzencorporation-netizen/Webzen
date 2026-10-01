@@ -103,6 +103,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       ip: request.ip,
       userAgent: request.headers['user-agent'],
     });
+    await systemDb.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
     reply.setCookie(SESSION_COOKIE, token, sessionCookieOptions(secureCookie, expiresAt));
     const auth = await loadSession(token);
     if (!auth) throw new AuthenticationError();

@@ -1,10 +1,16 @@
 'use client';
 
-import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
-type ToastTone = 'success' | 'error';
+type ToastTone = 'success' | 'error' | 'info';
+
+const TONES: Record<ToastTone, { border: string; icon: ReactNode }> = {
+  success: { border: 'border-brand-200', icon: <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" aria-hidden /> },
+  error: { border: 'border-red-200', icon: <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden /> },
+  info: { border: 'border-sky-200', icon: <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden /> },
+};
 interface ToastItem {
   id: number;
   tone: ToastTone;
@@ -32,13 +38,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((item) => (
           <div
             key={item.id}
-            role="status"
-            className={cn(
-              'pointer-events-auto flex items-start gap-3 rounded-lg border bg-white px-4 py-3 text-sm shadow-lg',
-              item.tone === 'success' ? 'border-brand-200' : 'border-red-200',
-            )}
+            role={item.tone === 'error' ? 'alert' : 'status'}
+            className={cn('pointer-events-auto flex animate-rise-in items-start gap-3 rounded-lg border bg-surface px-4 py-3 text-sm shadow-lg', TONES[item.tone].border)}
           >
-            {item.tone === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />}
+            {TONES[item.tone].icon}
             <p className="flex-1 text-slate-700">{item.message}</p>
             <button onClick={() => dismiss(item.id)} className="text-slate-400 hover:text-slate-600" aria-label="Fechar aviso">
               <X className="h-4 w-4" />
@@ -59,6 +62,7 @@ export function useToast() {
     () => ({
       success: (message: string) => push('success', message),
       error: (message: string) => push('error', message),
+      info: (message: string) => push('info', message),
     }),
     [push],
   );

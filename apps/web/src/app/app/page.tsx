@@ -9,6 +9,7 @@ import { PageContainer } from '@/components/layout/company-shell';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { EmptyState, PageHeader, Skeleton, StatCard, Tabs } from '@/components/ui/misc';
+import { SetupChecklist } from '@/features/dashboard/setup-checklist';
 import type { ConversationListItem, UsageStatus } from '@/features/types';
 import { usageStateLabels } from '@/i18n/pt-BR';
 import { api, type Paginated } from '@/lib/api';
@@ -66,6 +67,8 @@ export default function DashboardPage() {
           />
         }
       />
+
+      {can('settings:manage') ? <SetupChecklist /> : null}
 
       {can('reports:read') ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

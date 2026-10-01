@@ -1,10 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, LifeBuoy, Menu, Rocket, X } from 'lucide-react';
+import { LifeBuoy, Menu, Rocket, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
+import { Logo } from '@/components/brand/logo';
+import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/misc';
 import { api } from '@/lib/api';
@@ -16,11 +18,8 @@ import { UserMenu } from './user-menu';
 
 function Brand() {
   return (
-    <Link href="/app" className="flex items-center gap-2 px-2 text-[15px] font-semibold tracking-tight text-slate-900">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
-        <Bot className="h-4.5 w-4.5" />
-      </span>
-      BotsSaaS
+    <Link href="/app" className="px-2 text-slate-900" aria-label="WebZen — visão geral">
+      <Logo />
     </Link>
   );
 }
@@ -116,7 +115,7 @@ export function CompanyShell({ children }: { children: ReactNode }) {
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+              active ? 'bg-ink text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
             )}
           >
             <item.icon className={cn('h-4 w-4', active ? 'text-brand-300' : 'text-slate-400')} />
@@ -131,11 +130,12 @@ export function CompanyShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh flex-col">
       {me.data.supportMode ? <SupportBanner expiresAt={me.data.supportMode.expiresAt} /> : null}
+      <SubscriptionBanner />
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-border bg-surface scrollbar-thin lg:block">{sidebar}</aside>
         {mobileOpen ? (
           <div className="fixed inset-0 z-40 lg:hidden">
-            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileOpen(false)} />
+            <div className="absolute inset-0 bg-ink-deep/40" onClick={() => setMobileOpen(false)} />
             <aside className="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-surface shadow-xl">{sidebar}</aside>
           </div>
         ) : null}

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { DEFAULT_E2E_DATABASE_URL, resolveE2eDatabaseTarget } from './e2e/database-target';
+import { E2E_MAIL_DIR } from './e2e/fixtures';
 
 /**
  * E2E dos fluxos críticos contra uma pilha isolada:
@@ -36,6 +37,14 @@ const serverEnv = {
   STT_PROVIDER: 'mock',
   RATE_LIMIT_PER_MINUTE: '5000',
   LOGIN_RATE_LIMIT_PER_MINUTE: '500',
+  // O limite por conta vive no Redis (15 min): sem isto, rodar a suíte duas vezes seguidas
+  // bloqueia o login da conta demo e os testes falham por motivo alheio ao que verificam.
+  LOGIN_ACCOUNT_MAX_ATTEMPTS: '500',
+  ACCOUNT_EMAIL_RATE_LIMIT_PER_HOUR: '500',
+  // E-mails viram arquivos lidos pelos testes (cadastro, senha, convite).
+  EMAIL_PROVIDER: 'log',
+  EMAIL_LOG_DIR: E2E_MAIL_DIR,
+  BILLING_PROVIDER: 'none',
 };
 
 export default defineConfig({

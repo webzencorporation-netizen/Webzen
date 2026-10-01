@@ -29,7 +29,7 @@ export function Inbox({ conversationId }: { conversationId?: string }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <div className={cn('w-full shrink-0 border-r border-border bg-white lg:w-[340px]', conversationId && 'hidden lg:block')}>
+      <div className={cn('w-full shrink-0 border-r border-border bg-surface lg:w-[340px]', conversationId && 'hidden lg:block')}>
         <ConversationList selectedId={conversationId} filter={filter} onFilterChange={(value) => router.push(conversationId ? `/app/conversations/${conversationId}?filter=${value}` : `/app/conversations?filter=${value}`)} />
       </div>
       <div className={cn('min-w-0 flex-1', !conversationId && 'hidden lg:block')}>
@@ -43,13 +43,13 @@ export function Inbox({ conversationId }: { conversationId?: string }) {
       </div>
       {conversationId && conversation.data ? (
         <>
-          <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l border-border bg-white scrollbar-thin xl:block">
+          <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l border-border bg-surface scrollbar-thin xl:block">
             <ContactDetails contactId={conversation.data.contact.id} lead={conversation.data.lead} />
           </aside>
           {detailsOpen ? (
             <div className="fixed inset-0 z-40 xl:hidden">
-              <div className="absolute inset-0 bg-slate-900/40" onClick={() => setDetailsOpen(false)} />
-              <aside className="absolute inset-y-0 right-0 w-[min(92vw,360px)] overflow-y-auto bg-white shadow-xl">
+              <div className="absolute inset-0 bg-ink-deep/40" onClick={() => setDetailsOpen(false)} />
+              <aside className="absolute inset-y-0 right-0 w-[min(92vw,360px)] overflow-y-auto bg-surface shadow-xl">
                 <div className="flex justify-end p-2">
                   <button onClick={() => setDetailsOpen(false)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Fechar detalhes"><X className="h-5 w-5" /></button>
                 </div>

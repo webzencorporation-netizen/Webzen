@@ -44,7 +44,7 @@ async function sendInvitationEmail(
       inviterName: scope.actor.label ?? 'Um administrador',
       companyName: company.name,
       roleLabel: COMPANY_ROLE_LABELS[invitation.role].toLowerCase(),
-      url: `${env.APP_URL}/invite?token=${encodeURIComponent(token)}`,
+      url: `${env.APP_URL}/convite?token=${encodeURIComponent(token)}`,
       expiresInDays: INVITATION_TTL_DAYS,
     }),
   });

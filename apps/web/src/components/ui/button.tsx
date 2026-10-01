@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 
 const variants = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
-  secondary: 'bg-white text-slate-800 border border-border hover:bg-slate-50 shadow-sm',
+  secondary: 'bg-surface text-slate-800 border border-border hover:bg-slate-50 shadow-sm',
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
   outline: 'border border-brand-600 text-brand-700 hover:bg-brand-50',

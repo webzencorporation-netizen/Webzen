@@ -62,7 +62,7 @@ function NewCompanyDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           {result.password ? (
             <div>
               <p className="mb-1 font-medium">Senha temporária do responsável (exibida uma única vez):</p>
-              <code className="block rounded-lg bg-slate-900 px-3 py-2 text-center font-mono text-lg text-white">{result.password}</code>
+              <code className="block rounded-lg bg-ink px-3 py-2 text-center font-mono text-lg text-white">{result.password}</code>
             </div>
           ) : <p className="text-muted">O e-mail do responsável já tinha acesso à plataforma e foi vinculado à nova empresa.</p>}
         </div>

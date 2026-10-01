@@ -39,7 +39,7 @@ async function sendVerification(
     template: 'verifyEmail',
     email: emailTemplates.verifyEmail({
       name: user.name,
-      url: link(container, '/verify-email', token),
+      url: link(container, '/confirmar-email', token),
       expiresInHours: AUTH_TOKEN_TTL_MS.EMAIL_VERIFICATION / 3600_000,
     }),
   });
@@ -51,7 +51,7 @@ async function sendPasswordReset(
   reason: 'requested' | 'signup_attempt' = 'requested',
 ): Promise<void> {
   const token = await issueAuthToken(user, 'PASSWORD_RESET');
-  const url = link(container, '/reset-password', token);
+  const url = link(container, '/redefinir-senha', token);
   const expiresInMinutes = AUTH_TOKEN_TTL_MS.PASSWORD_RESET / 60_000;
   await queueEmail(container, {
     to: user.email,

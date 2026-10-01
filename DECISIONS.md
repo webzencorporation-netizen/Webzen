@@ -373,3 +373,18 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - Guia de configuração em [docs/BILLING.md](docs/BILLING.md).
 
 **Limites:** sem nota fiscal, moeda única, sem homologação com conta Stripe real. Uma assinatura removida na Stripe sem evento entregue só é corrigida no próximo evento ou pelo reprocessamento manual.
+
+## D-040 — Identidade WebZen, design system com tema escuro e site público
+
+**Contexto:** a interface se chamava BotsSaaS, `/` redirecionava para o painel e o site inteiro estava fora dos buscadores. Não havia landing, preços, termos, privacidade, status, 404 estilizada nem tema escuro. Cerca de 220 usos de cores fixas (`slate`/`white`) em 38 arquivos impediam um tema escuro por reescrita pontual.
+
+**Decisão:**
+
+- Marca: "WebZen" com um ensō (círculo zen aberto) como símbolo. Paleta: tinta `#102A43` (texto e herói noturno), jade `#0A7F66` (ação; 4,95:1 com texto branco), névoa `#DCE6EA` (bordas), papel `#F6F8FA`, âmbar `#F2A93B` só para horários. Tipos: Schibsted Grotesk (títulos) e Inter (texto), servidos pelo próprio app (CSP mantida).
+- A escala `slate` do Tailwind passa a ser a escala de tinta e é **invertida no tema escuro** por variáveis CSS; superfícies usam tokens semânticos (`bg-surface`, `bg-canvas`) e superfícies escuras com texto branco usam `ink` fixo. Assim o painel antigo ganha o tema escuro sem reescrita. Preferência claro/escuro/sistema salva no navegador e aplicada antes da primeira pintura.
+- Site público no grupo `(site)`: landing com herói "23:47" (uma conversa atendida fora do expediente; única animação automática, respeita "reduzir movimento"), soluções, como funciona, benefícios, funcionalidades, integrações (o que ainda não existe aparece como "Em breve"), planos, FAQ; `/precos` com comparativo; termos, privacidade e cookies marcados como **versão provisória**; `/status` (endpoint público só com estados, cache de 1 min); robots, sitemap, Open Graph, JSON-LD e 404/erro próprios. Painel e plataforma ficam `noindex`.
+- Preços do site vêm da API pública no servidor, com revalidação de 5 min e aviso quando a API está fora — nenhum preço escrito no front.
+- Sem banner de cookies: só há o cookie essencial de sessão e a preferência de tema no navegador.
+- Rótulos em caixa alta removidos (frase normal), títulos de aba por página.
+
+**Limites:** textos jurídicos provisórios (precisam de revisão de advogado). Sem imagem Open Graph dedicada. O tema escuro inverte tons; telas novas devem usar tokens semânticos em vez de `slate`/`white` quando o contraste importar.

@@ -42,7 +42,7 @@ function Section({ title, icon: Icon, children, action }: { title: string; icon:
   return (
     <section className="border-b border-border px-4 py-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-muted">
           <Icon className="h-3.5 w-3.5" /> {title}
         </h3>
         {action}

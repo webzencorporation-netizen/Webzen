@@ -196,6 +196,15 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - 12 testes ponta a ponta com gateway simulado (Fluxo 3: plano → checkout → webhook → plano atualizado), incluindo evento repetido, assinatura inválida, evento de produção em teste, preço adulterado, permissões, isolamento e reprocessamento.
   - Validação: lint, typecheck, 633 testes, build e smoke dos bundles verdes. Pendente: homologação com conta Stripe (modo teste) quando houver chaves.
 
+- **Interface WebZen: design system, site público, contas e assinatura (2026-10-01, D-040)**
+  - Identidade WebZen (ensō, tinta/jade/névoa/âmbar, Schibsted Grotesk + Inter), tema claro/escuro/sistema em todo o painel, rótulos sem caixa alta, títulos de aba.
+  - Site público: landing, preços com mensal/anual e comparativo, termos/privacidade/cookies provisórios, status, 404, robots/sitemap/JSON-LD.
+  - Telas de cadastro, login (com reenvio de confirmação e retorno seguro), esqueci/redefinir senha, confirmação de e-mail e aceite de convite.
+  - Painel: Configurações → Assinatura (plano, status, pagamento, troca, cancelamento, consumo 70/90/100%, faturas), Conta e segurança (tema, senha, sessões), Equipe por convite, checklist de configuração no início, aviso de assinatura pendente; plataforma → Cobrança (eventos e reprocessamento).
+  - Teste manual no navegador: Fluxo 1 (cadastro → e-mail → confirmação → painel), telas de assinatura, segurança e equipe, landing em desktop/celular e claro/escuro.
+  - E2E: 12 cenários (3 novos: site público, cadastro com confirmação, recuperação de senha). Corrigido: E2E falhava ao rodar duas vezes em 15 min por causa do limite de login por conta no Redis.
+  - Validação: lint, typecheck, 641 testes, build, smoke dos bundles e E2E verdes.
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

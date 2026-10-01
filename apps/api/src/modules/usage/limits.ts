@@ -1,6 +1,7 @@
 import { decimalToNumber, type Prisma } from '@botsaas/database';
 import {
   LimitReachedError,
+  USAGE_ALERT_THRESHOLDS,
   USAGE_METRIC_LABELS,
   USAGE_METRICS,
   type UsageMetric,
@@ -92,7 +93,10 @@ export async function resolveLimits(
     const planValue = planLimits[metric];
     result[metric] = override
       ? { limit: decimalToNumber(override.limitValue), warningPercent: override.warningPercent }
-      : { limit: typeof planValue === 'number' ? planValue : null, warningPercent: 80 };
+      : {
+          limit: typeof planValue === 'number' ? planValue : null,
+          warningPercent: USAGE_ALERT_THRESHOLDS[0],
+        };
   }
   return result;
 }
