@@ -93,13 +93,7 @@ export const automationTriggerLabels: Record<string, string> = {
   'appointment.reminder_due': 'Consulta amanhã (lembrete)',
 };
 
-export const featureLabels: Record<string, string> = {
-  AI_AGENT: 'Atendente virtual',
-  CRM: 'CRM',
-  CALENDAR: 'Agenda',
-  AUTOMATIONS: 'Automações',
-  ADVANCED_ANALYTICS: 'Relatórios avançados',
-  KNOWLEDGE_UPLOADS: 'Upload de documentos',
-};
+/** Rótulos dos recursos e das métricas vêm do catálogo central de planos (@botsaas/shared). */
+export { FEATURE_LABELS as featureLabels, USAGE_METRIC_LABELS as usageMetricLabels } from '@botsaas/shared';
 
 export const weekdayLabels = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];

@@ -3,6 +3,7 @@
  *
  *   pnpm db:seed                 → referência + demo
  *   pnpm db:seed -- --reference  → apenas planos e preços de modelos (seguro em qualquer ambiente)
+ *   pnpm db:seed -- --reference --sync-plans → também reaplica preços/limites/recursos do catálogo
  *
  * Nunca roda automaticamente e recusa dados de demonstração em produção.
  */
@@ -569,8 +570,13 @@ async function seedDemoCompany() {
 async function main() {
   const env = parseEnv(process.env);
   const referenceOnly = process.argv.includes('--reference');
-  await seedReferenceData();
-  log('Planos e preços de modelos atualizados.');
+  const syncPlans = process.argv.includes('--sync-plans');
+  await seedReferenceData({ syncPlans });
+  log(
+    syncPlans
+      ? 'Planos sincronizados com o catálogo e preços de modelos atualizados.'
+      : 'Planos e preços de modelos atualizados.',
+  );
   if (referenceOnly) return;
   if (env.NODE_ENV === 'production') {
     throw new Error(

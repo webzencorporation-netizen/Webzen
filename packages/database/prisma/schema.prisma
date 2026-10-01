@@ -232,13 +232,37 @@ enum UsageMetric {
   USERS
   WHATSAPP_NUMBERS
   STORAGE_MB
+  AUTOMATIONS
 }
 
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
   PAST_DUE
+  UNPAID
+  INCOMPLETE
+  PAUSED
   CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum BillingEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
 }
 
 enum FeatureFlagKey {
@@ -248,6 +272,12 @@ enum FeatureFlagKey {
   AUTOMATIONS
   ADVANCED_ANALYTICS
   KNOWLEDGE_UPLOADS
+  CALENDAR_SYNC
+  API_ACCESS
+  WEBHOOKS
+  PRIORITY_SUPPORT
+  REMOVE_BRANDING
+  WHITE_LABEL
 }
 
 enum CustomFieldType {
@@ -291,6 +321,8 @@ model User {
   platformRole       PlatformRole?
   isActive           Boolean       @default(true)
   mustChangePassword Boolean       @default(false)
+  /// Um teste grátis por pessoa: preenchido quando o usuário inicia o primeiro trial.
+  trialUsedAt        DateTime?     @db.Timestamptz(6)
   lastLoginAt        DateTime?     @db.Timestamptz(6)
   createdAt          DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime      @updatedAt @db.Timestamptz(6)
@@ -350,6 +382,8 @@ model Company {
   onboardingDoneAt   DateTime?           @db.Timestamptz(6)
   /// Retenção de dados definida pela empresa (LGPD). Nulo = sem expurgo automático.
   messageRetentionDays Int?
+  /// Cliente no gateway de cobrança (Stripe `cus_...`).
+  billingCustomerId  String?             @unique
   activatedAt        DateTime?           @db.Timestamptz(6)
   suspendedReason    String?
   createdAt          DateTime            @default(now()) @db.Timestamptz(6)
@@ -384,6 +418,8 @@ model Company {
   usageRecords       UsageRecord[]
   usageLimits        UsageLimit[]
   subscription       Subscription?
+  invoices           Invoice[]
+  billingEvents      BillingEvent[]
   featureFlags       CompanyFeatureFlag[]
   automations        Automation[]
   automationRuns     AutomationRun[]
@@ -1095,18 +1131,30 @@ model UsageRecord {
 }
 
 model Plan {
-  id          String   @id @default(uuid(7)) @db.Uuid
-  key         String   @unique
-  name        String
-  description String?
-  priceCents  Int      @default(0)
-  currency    String   @default("BRL")
-  isActive    Boolean  @default(true)
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  key                  String           @unique
+  name                 String
+  /// Frase curta do card de preços.
+  tagline              String?
+  description          String?
+  /// Preço mensal em centavos (BRL). O preço cobrado vem sempre daqui/da Stripe, nunca do navegador.
+  priceMonthlyCents    Int              @default(0)
+  /// Preço anual em centavos; nulo = sem opção anual.
+  priceYearlyCents     Int?
+  currency             String           @default("BRL")
+  /// IDs oficiais dos preços na Stripe (modo teste ou produção, conforme o ambiente).
+  stripePriceMonthlyId String?          @unique
+  stripePriceYearlyId  String?          @unique
+  isActive             Boolean          @default(true)
+  /// Exibido na página pública de preços e no checkout.
+  isPublic             Boolean          @default(true)
+  highlight            Boolean          @default(false)
+  sortOrder            Int              @default(0)
   /// { "AI_CALLS_PER_MONTH": 5000, ... } — nulo/ausente = ilimitado.
-  limits      Json
-  features    FeatureFlagKey[] @default([])
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  limits               Json
+  features             FeatureFlagKey[] @default([])
+  createdAt            DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(6)
 
   subscriptions Subscription[]
 }
@@ -1116,16 +1164,77 @@ model Subscription {
   companyId          String             @unique @db.Uuid
   planId             String             @db.Uuid
   status             SubscriptionStatus @default(ACTIVE)
+  interval           BillingInterval    @default(MONTHLY)
   currentPeriodStart DateTime           @db.Timestamptz(6)
   currentPeriodEnd   DateTime?          @db.Timestamptz(6)
-  /// Reservado para o provedor de cobrança futuro.
-  externalId         String?
+  /// ID da assinatura no gateway (Stripe `sub_...`). Nulo = assinatura gerida manualmente.
+  externalId         String?            @unique
   cancelAt           DateTime?          @db.Timestamptz(6)
+  /// Cancelamento agendado para o fim do período (o cliente pode reativar até lá).
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?          @db.Timestamptz(6)
+  trialEndsAt        DateTime?          @db.Timestamptz(6)
+  /// Último evento do gateway aplicado (ordem dos webhooks).
+  externalUpdatedAt  DateTime?          @db.Timestamptz(6)
   createdAt          DateTime           @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+model Invoice {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  companyId       String           @db.Uuid
+  /// ID da fatura no gateway (Stripe `in_...`).
+  externalId      String           @unique
+  number          String?
+  status          InvoiceStatus
+  currency        String           @default("BRL")
+  amountDueCents  Int
+  amountPaidCents Int              @default(0)
+  discountCents   Int              @default(0)
+  planKey         String?
+  interval        BillingInterval?
+  periodStart     DateTime?        @db.Timestamptz(6)
+  periodEnd       DateTime?        @db.Timestamptz(6)
+  hostedUrl       String?
+  pdfUrl          String?
+  /// ID do pagamento (Stripe `pi_...`), exibido como ID da transação.
+  paymentId       String?
+  paidAt          DateTime?        @db.Timestamptz(6)
+  issuedAt        DateTime         @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, issuedAt])
+}
+
+/// Eventos recebidos do gateway de cobrança. A unicidade (provider, externalId) torna o webhook idempotente.
+model BillingEvent {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  provider    String
+  externalId  String
+  type        String
+  livemode    Boolean
+  status      BillingEventStatus @default(RECEIVED)
+  companyId   String?            @db.Uuid
+  /// ID do objeto principal do evento (assinatura, fatura, checkout). Sem payload: evita guardar dados pessoais.
+  objectId    String?
+  attempts    Int                @default(0)
+  error       String?
+  receivedAt  DateTime           @default(now()) @db.Timestamptz(6)
+  processedAt DateTime?          @db.Timestamptz(6)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalId])
+  @@index([companyId, receivedAt])
+  @@index([status, receivedAt])
 }
 
 /// Sobrescrita de limite por empresa (prevalece sobre o plano).

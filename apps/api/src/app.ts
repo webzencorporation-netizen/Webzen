@@ -13,6 +13,7 @@ import { registerRouteInventory } from './plugins/route-inventory';
 import { authRoutes } from './modules/auth/routes';
 import { companyRoutes } from './modules/company/routes';
 import { platformRoutes } from './modules/platform/routes';
+import { publicRoutes } from './modules/public/routes';
 import { oauthRoutes } from './modules/oauth/routes';
 import { webhookRoutes } from './modules/webhooks/routes';
 
@@ -96,6 +97,7 @@ export async function buildApp(container: AppContainer): Promise<FastifyInstance
     }
   });
 
+  await app.register(publicRoutes, { prefix: '/api/public' });
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(platformRoutes, { prefix: '/api/platform' });
   await app.register(companyRoutes, { prefix: '/api/app' });

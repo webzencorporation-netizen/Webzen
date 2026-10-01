@@ -8,7 +8,7 @@ import {
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { optionalText, paginationQuerySchema } from '../../../lib/http';
+import { optionalText, paginationQuerySchema, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company, requireAuthContext, requireTenant } from '../../../plugins/guards';
 import { getTestConversation, resetTestChat, runTestChat } from '../../agent/test-chat';
@@ -54,7 +54,7 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.patch(
     '/config',
-    { preValidation: company('ai:configure'), schema: { body: configBody.partial() } },
+    { preValidation: company('ai:configure'), schema: { body: patchSchema(configBody) } },
     async (request) => ai.updateAiConfig(scopeFromRequest(request), request.body),
   );
 

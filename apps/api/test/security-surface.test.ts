@@ -36,6 +36,7 @@ beforeEach(() => harness.reset());
 const PUBLIC_ROUTES = new Set([
   'POST /api/auth/login',
   'POST /api/auth/logout',
+  'GET /api/public/plans',
   'GET /api/integrations/google/callback',
   'GET /health',
   'GET /health/ready',

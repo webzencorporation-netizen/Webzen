@@ -19,7 +19,7 @@ import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import type { Actor } from '../../context';
 import { auditPlatform } from '../../lib/audit';
-import { idParamSchema, paginationQuerySchema } from '../../lib/http';
+import { idParamSchema, paginationQuerySchema, patchSchema } from '../../lib/http';
 import { systemScope } from '../../lib/scope';
 import { periodStart } from '../../lib/time';
 import { platform, requireAuthContext } from '../../plugins/guards';
@@ -53,11 +53,13 @@ const timezoneSchema = z.string().refine((value) => {
   }
 }, 'Fuso horário inválido');
 
-const metricSchema = z
-  .enum(USAGE_METRICS as [string, ...string[]])
-  .transform((value) => value as (typeof USAGE_METRICS)[number]);
+const metricSchema = z.enum(USAGE_METRICS);
 
-const planLimitsSchema = z.record(z.string(), z.number().nonnegative().nullable());
+// Só métricas conhecidas: uma chave digitada errada não pode virar "ilimitado" em silêncio.
+const planLimitsSchema = z.partialRecord(
+  z.enum(USAGE_METRICS),
+  z.number().nonnegative().nullable(),
+);
 
 function actorOf(request: Parameters<typeof requireAuthContext>[0]): Actor {
   const auth = requireAuthContext(request);
@@ -289,16 +291,31 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
   const planBody = z.object({
     key: z.string().regex(/^[A-Z0-9_]{2,30}$/),
     name: z.string().min(2).max(60),
+    tagline: z.string().max(160).nullish(),
     description: z.string().max(300).nullish(),
-    priceCents: z.number().int().nonnegative(),
-    isActive: z.boolean().default(true),
+    priceMonthlyCents: z.number().int().nonnegative(),
+    priceYearlyCents: z.number().int().nonnegative().nullish(),
+    stripePriceMonthlyId: z
+      .string()
+      .regex(/^price_[A-Za-z0-9]+$/)
+      .nullish(),
+    stripePriceYearlyId: z
+      .string()
+      .regex(/^price_[A-Za-z0-9]+$/)
+      .nullish(),
+    // Sem .default(): no Zod 4, `.partial()` mantém o default e um PATCH parcial
+    // reativaria um plano desativado. Os padrões de criação ficam no banco.
+    isActive: z.boolean().optional(),
+    isPublic: z.boolean().optional(),
+    highlight: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(10_000).optional(),
     limits: planLimitsSchema,
     features: z.array(z.enum(FEATURE_FLAGS)),
   });
 
   app.get('/plans', { preValidation: platform('platform:companies:read') }, async () => {
     const plans = await systemDb.plan.findMany({
-      orderBy: { priceCents: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
       include: { _count: { select: { subscriptions: true } } },
     });
     return plans.map(({ _count, ...plan }) => ({ ...plan, subscriptions: _count.subscriptions }));
@@ -327,7 +344,7 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     '/plans/:id',
     {
       preValidation: platform('platform:plans:write'),
-      schema: { params: idParamSchema, body: planBody.omit({ key: true }).partial() },
+      schema: { params: idParamSchema, body: patchSchema(planBody.omit({ key: true })) },
     },
     async (request) => {
       const { limits, ...rest } = request.body;

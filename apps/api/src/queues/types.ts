@@ -22,6 +22,7 @@ export interface JobPayloads {
   'appointments.reminders': Record<string, never>;
   'maintenance.retention': Record<string, never>;
   'agent.recover-stalled': Record<string, never>;
+  'usage.alerts': Record<string, never>;
 }
 
 export type JobName = keyof JobPayloads;
@@ -38,6 +39,7 @@ export const JOB_NAMES = [
   'appointments.reminders',
   'maintenance.retention',
   'agent.recover-stalled',
+  'usage.alerts',
 ] as const satisfies readonly JobName[];
 
 export interface EnqueueOptions {
@@ -74,4 +76,5 @@ export const JOB_RETRY_POLICY: Record<JobName, { attempts: number; backoffMs: nu
   'appointments.reminders': { attempts: 1, backoffMs: 0 },
   'maintenance.retention': { attempts: 1, backoffMs: 0 },
   'agent.recover-stalled': { attempts: 1, backoffMs: 0 },
+  'usage.alerts': { attempts: 1, backoffMs: 0 },
 };

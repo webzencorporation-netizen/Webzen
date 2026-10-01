@@ -289,6 +289,10 @@ describe('agenda', () => {
       templateKey: 'RESTAURANT',
       planKey: 'STARTER',
     });
+    // Todos os planos incluem agenda; o recurso desligado para a empresa deve valer igual.
+    await systemDb.companyFeatureFlag.create({
+      data: { companyId: company.id, flag: 'CALENDAR', enabled: false },
+    });
     await createWhatsAppAccount(company.id, '888');
     await systemDb.aIConfiguration.update({
       where: { companyId: company.id },

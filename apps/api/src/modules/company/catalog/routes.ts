@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema, optionalText, paginationQuerySchema } from '../../../lib/http';
+import { idParamSchema, optionalText, paginationQuerySchema, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
 import * as catalog from './service';
@@ -57,7 +57,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     '/services/:id',
     {
       preValidation: company('catalog:write'),
-      schema: { params: idParamSchema, body: serviceBody.partial() },
+      schema: { params: idParamSchema, body: patchSchema(serviceBody) },
     },
     async (request) =>
       catalog.updateService(scopeFromRequest(request), request.params.id, request.body),
@@ -86,7 +86,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     '/products/:id',
     {
       preValidation: company('catalog:write'),
-      schema: { params: idParamSchema, body: productBody.partial() },
+      schema: { params: idParamSchema, body: patchSchema(productBody) },
     },
     async (request) =>
       catalog.updateProduct(scopeFromRequest(request), request.params.id, request.body),

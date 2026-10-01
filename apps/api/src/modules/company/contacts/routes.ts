@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema, optionalText, paginationQuerySchema } from '../../../lib/http';
+import { idParamSchema, optionalText, paginationQuerySchema, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
 import * as contacts from './service';
@@ -58,7 +58,7 @@ export const contactRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id',
     {
       preValidation: company('contacts:write'),
-      schema: { params: idParamSchema, body: contactBody.partial() },
+      schema: { params: idParamSchema, body: patchSchema(contactBody) },
     },
     async (request) =>
       contacts.updateContact(scopeFromRequest(request), request.params.id, request.body),

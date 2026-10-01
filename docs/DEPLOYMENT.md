@@ -84,7 +84,7 @@ pnpm db:migrate:deploy
 pnpm db:seed -- --reference
 ```
 
-O seed de referência cria planos/preços ausentes e não sobrescreve registros existentes. Confira os preços e planos no painel antes de usá-los comercialmente. O seed completo cria dados e usuários de demonstração e é bloqueado em produção; não reduza `NODE_ENV` para contornar essa proteção.
+O seed de referência cria planos/preços ausentes e não sobrescreve registros existentes (preserva ajustes feitos no painel). Para reaplicar o catálogo do código (`packages/shared/src/plans.ts`) aos planos existentes — por exemplo, na troca de preços de 2026-10-01 — rode uma vez `pnpm db:seed -- --reference --sync-plans`. Os IDs de preço da Stripe (`STRIPE_PRICE_<PLANO>_<MONTHLY|YEARLY>`) são gravados sempre que estiverem no ambiente. Confira os preços e planos no painel antes de usá-los comercialmente. O seed completo cria dados e usuários de demonstração e é bloqueado em produção; não reduza `NODE_ENV` para contornar essa proteção.
 
 Antes de expor uma implantação nova, provisione o primeiro `PLATFORM_OWNER` com `pnpm --filter @botsaas/api start:bootstrap-owner` após o build. Injete `DATABASE_URL`, `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_NAME` e `BOOTSTRAP_OWNER_PASSWORD` pelo gerenciador de segredos; a senha também pode vir de stdin não interativo. Não passe a senha como argumento nem a grave no histórico do shell. O comando não carrega `.env` nem inicializa providers. Para desenvolvimento existe `pnpm --filter @botsaas/api bootstrap:owner`.
 

@@ -1,7 +1,7 @@
 # PROGRESS
 
 > Fonte de verdade do estado do projeto. Atualize ao fim de cada fase/sessão.
-> Última atualização: 2026-09-29 — IA real via Meta Model API (Muse Spark 1.3) integrada e homologada; Anthropic segue disponível, mas bloqueada por créditos na conta
+> Última atualização: 2026-10-01 — evolução SaaS WebZen em andamento (catálogo de planos, entitlements e acesso pela assinatura concluídos)
 
 ## Fase atual
 
@@ -178,9 +178,17 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - 37 testes de segurança novos; suíte completa verde (555 testes). `pnpm audit`: nenhuma vulnerabilidade conhecida.
   - Pendentes documentados: MFA para administradores, papel de banco restrito em produção, expiração de sessão por inatividade.
 
+- **Evolução SaaS WebZen — auditoria e catálogo de planos (2026-10-01, D-035/D-036)**
+  - Auditoria da evolução SaaS em [AUDIT_2026-10](docs/AUDIT_2026-10.md): nenhuma vulnerabilidade crítica aberta; lacunas altas para operar como SaaS (status da assinatura ignorado, sem recuperação de senha, sem cadastro self-service, sem cobrança, preços antigos).
+  - Catálogo central de planos com os preços novos (R$ 250/450/750; anual R$ 2.500/4.500/7.500), limites e recursos progressivos, entitlements novos e métrica de automações. Migração `billing_plans` (aditiva; `priceCents` renomeado), faturas e eventos de cobrança já modelados para a Stripe.
+  - Assinatura inativa bloqueia a IA; avisos de consumo 70/90/100% no painel; rota pública de planos.
+  - Bug corrigido: PATCH parcial regravava defaults (automações, conhecimento, planos).
+  - Validação: lint, typecheck e suíte completa verdes (testes novos: catálogo, seed, acesso, avisos, automações, PATCH).
+
 ## Em andamento
 
-- Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
+- Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.
+- Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
 
 ## Próximos passos
 

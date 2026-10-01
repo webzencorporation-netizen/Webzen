@@ -50,6 +50,10 @@ describe('consistência do schema', () => {
     ['WebhookEventStatus', shared.WEBHOOK_EVENT_STATUSES],
     ['MediaProcessingStatus', shared.MEDIA_PROCESSING_STATUSES],
     ['NotificationType', shared.NOTIFICATION_TYPES],
+    ['UsageMetric', shared.USAGE_METRICS],
+    ['SubscriptionStatus', shared.SUBSCRIPTION_STATUSES],
+    ['BillingInterval', shared.BILLING_INTERVALS],
+    ['InvoiceStatus', shared.INVOICE_STATUSES],
   ] as const)('enum %s idêntico ao do pacote shared', (name, values) => {
     const prismaEnum = (prismaEnums as unknown as Record<string, Record<string, string>>)[name];
     expect(prismaEnum, `enum ${name} ausente no Prisma`).toBeDefined();

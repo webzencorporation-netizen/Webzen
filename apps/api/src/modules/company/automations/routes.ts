@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema } from '../../../lib/http';
+import { idParamSchema, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
 import * as automations from '../../automations/service';
@@ -26,7 +26,7 @@ export const automationRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id',
     {
       preValidation: write,
-      schema: { params: idParamSchema, body: automationInputSchema.partial() },
+      schema: { params: idParamSchema, body: patchSchema(automationInputSchema) },
     },
     async (request) =>
       automations.updateAutomation(scopeFromRequest(request), request.params.id, request.body),

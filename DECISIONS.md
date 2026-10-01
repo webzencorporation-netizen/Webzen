@@ -314,3 +314,25 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - `pnpm check:secrets` (CI e hook local de pré-commit) e `pnpm audit --audit-level high` no CI; `overrides` para `deepmerge-ts` 8 e `mysql2` 3.23.1 (transitivas do CLI do Prisma), validados com `prisma validate/generate/migrate status`.
 
 **Limites:** sem MFA (recomendado para administradores da plataforma; não improvisado). Sem fluxo de "esqueci a senha" (redefinição pela administração). `customerConfirmed` nas ferramentas de agenda continua sendo informado pelo modelo. Sessões duram 14 dias sem expiração por inatividade. A aplicação usa o papel dono do banco (Neon/local); um papel restrito só com DML é recomendado em produção. CSP usa `'unsafe-inline'` (exigido pelo Next sem nonce). `pnpm audit` no CI pode falhar quando surgir um alerta novo — é intencional, para que ele seja tratado.
+
+## D-035 — Catálogo central de planos, entitlements e acesso pela assinatura
+
+**Contexto:** a evolução para SaaS self-service (WebZen, 2026-10-01) exige preços novos (Starter R$ 250, Pro R$ 450, Business R$ 750; anual R$ 2.500/4.500/7.500), sem plano grátis permanente, com diferença real de limites e recursos entre os planos. Os planos ficavam só no seed (R$ 299/599/1.299), com seis recursos e um único preço. O status da assinatura (`PAST_DUE`, `CANCELLED`) não tinha efeito nenhum.
+
+**Decisão:**
+
+- `packages/shared/src/plans.ts` (`DEFAULT_PLANS`) é a única definição de preços mensal/anual, limites e recursos no código, mais rótulos, limiares de aviso (70/90/100%), cálculo de economia anual e a regra de acesso pela assinatura. Nenhum outro arquivo repete preço ou testa o nome do plano.
+- Em execução, a tabela `Plan` é a fonte da verdade, editável no painel da plataforma. O seed de referência cria planos ausentes e só reaplica o catálogo com `--sync-plans` (preserva ajustes do administrador). `priceCents` foi **renomeado** para `priceMonthlyCents` (migração sem perda); novos campos: preço anual, IDs de preço da Stripe (`STRIPE_PRICE_<PLANO>_<PERÍODO>`), visibilidade, destaque e ordem.
+- Entitlements novos: `CALENDAR_SYNC`, `API_ACCESS`, `WEBHOOKS`, `PRIORITY_SUPPORT`, `REMOVE_BRANDING`, `WHITE_LABEL` (este último reservado, em nenhum plano). Métrica nova `AUTOMATIONS` (automações ativas), aplicada na criação e na reativação.
+- Agenda própria passa a estar em todos os planos; Google Agenda é do Pro em diante.
+- Assinatura: `TRIALING` (dentro do prazo), `ACTIVE` e `PAST_DUE` liberam o uso; `UNPAID`, `INCOMPLETE`, `PAUSED`, `CANCELLED` e trial vencido bloqueiam a **IA** (atendimento e "Testar agente"), que é o custo variável. O cliente continua vendo e editando os próprios dados. Empresas **sem** assinatura (geridas manualmente) mantêm o comportamento anterior.
+- Avisos de consumo a 70/90/100% por job do worker (`usage.alerts`, a cada 30 min), com chave de deduplicação por métrica, limiar e mês.
+- `GET /api/public/plans` expõe só o que a página de preços precisa (sem IDs da Stripe), com cache público de 5 minutos.
+
+**Limites:** os limites de mensagens contam mensagens de saída; a cobrança da Meta é da conta WhatsApp Business conectada pelo cliente. O aviso de consumo é só no painel até o envio de e-mails existir.
+
+## D-036 — PATCH sem os defaults do schema de criação
+
+**Contexto:** no Zod 4, `.partial()` mantém os `.default()`. Seis rotas PATCH usavam `schema.partial()`: um PATCH só com o nome regravava os padrões por cima dos valores atuais. Confirmado em automações (reativava e apagava as condições), entradas de conhecimento (FAQ virava texto) e planos (plano desativado era reativado em qualquer edição).
+
+**Decisão:** helper `patchSchema()` em `lib/http.ts` remove os defaults do topo e torna tudo opcional; todas as rotas PATCH passaram a usá-lo. Testes de regressão em `patch-defaults.test.ts` e `plans-billing-access.test.ts`.

@@ -36,6 +36,8 @@ export const TENANT_SCOPED_MODELS = [
   'UsageRecord',
   'UsageLimit',
   'Subscription',
+  'Invoice',
+  'BillingEvent',
   'CompanyFeatureFlag',
   'DomainEvent',
   'Automation',

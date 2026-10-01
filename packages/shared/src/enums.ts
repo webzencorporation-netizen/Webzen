@@ -82,6 +82,7 @@ export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 export const USAGE_STATES = ['NORMAL', 'WARNING', 'LIMIT_REACHED'] as const;
 export type UsageState = (typeof USAGE_STATES)[number];
 
+/** Entitlements: recursos que cada plano libera (ver plans.ts). Rotas pedem o recurso, nunca o plano. */
 export const FEATURE_FLAGS = [
   'AI_AGENT',
   'CRM',
@@ -89,8 +90,42 @@ export const FEATURE_FLAGS = [
   'AUTOMATIONS',
   'ADVANCED_ANALYTICS',
   'KNOWLEDGE_UPLOADS',
+  'CALENDAR_SYNC',
+  'API_ACCESS',
+  'WEBHOOKS',
+  'PRIORITY_SUPPORT',
+  'REMOVE_BRANDING',
+  'WHITE_LABEL',
 ] as const;
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];
+
+export const USAGE_METRICS = [
+  'AI_CALLS_PER_MONTH',
+  'MESSAGES_PER_MONTH',
+  'AI_COST_USD_PER_MONTH',
+  'USERS',
+  'WHATSAPP_NUMBERS',
+  'STORAGE_MB',
+  'AUTOMATIONS',
+] as const;
+export type UsageMetric = (typeof USAGE_METRICS)[number];
+
+export const SUBSCRIPTION_STATUSES = [
+  'TRIALING',
+  'ACTIVE',
+  'PAST_DUE',
+  'UNPAID',
+  'INCOMPLETE',
+  'PAUSED',
+  'CANCELLED',
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+export const BILLING_INTERVALS = ['MONTHLY', 'YEARLY'] as const;
+export type BillingInterval = (typeof BILLING_INTERVALS)[number];
+
+export const INVOICE_STATUSES = ['DRAFT', 'OPEN', 'PAID', 'VOID', 'UNCOLLECTIBLE'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 export const AI_TONES = ['FORMAL', 'FRIENDLY', 'CASUAL', 'OBJECTIVE'] as const;
 export type AiTone = (typeof AI_TONES)[number];
