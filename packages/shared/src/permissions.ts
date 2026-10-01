@@ -41,6 +41,8 @@ export const COMPANY_PERMISSIONS = [
   'audit:read',
   'settings:manage',
   'privacy:manage',
+  'billing:read',
+  'billing:manage',
 ] as const;
 
 export type CompanyPermission = (typeof COMPANY_PERMISSIONS)[number];
@@ -81,8 +83,9 @@ const MANAGER: CompanyPermission[] = [
 ];
 
 const COMPANY_ADMIN: CompanyPermission[] = COMPANY_PERMISSIONS.filter(
-  // Somente o dono pode excluir dados em massa / gerir privacidade.
-  (permission) => permission !== 'privacy:manage',
+  // Somente o dono pode excluir dados em massa / gerir privacidade e contratar, trocar ou
+  // cancelar o plano (decisões financeiras). O administrador vê a assinatura e as faturas.
+  (permission) => permission !== 'privacy:manage' && permission !== 'billing:manage',
 );
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {

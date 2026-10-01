@@ -7,6 +7,8 @@ import {
   type VerificationQuery,
 } from '@botsaas/whatsapp';
 import type { FastifyPluginAsync } from 'fastify';
+import { BillingSignatureError } from '../billing/provider';
+import { recordBillingEvent } from '../billing/service';
 import { recordWebhookEvent } from './service';
 
 /**
@@ -52,6 +54,36 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
         outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
       }
       return reply.status(200).send({ received: events.length, outcomes });
+    },
+  );
+
+  /**
+   * Webhook da cobrança (Stripe). Assinatura sobre o corpo bruto; o evento é gravado
+   * (idempotente) e processado pela fila, que relê o objeto na Stripe.
+   */
+  app.post(
+    '/stripe',
+    { config: { rateLimit: { max: 3000, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const provider = app.container.providers.billing;
+      if (!provider) throw new ServiceUnavailableError();
+      const signature =
+        request.headers[provider.name === 'stripe' ? 'stripe-signature' : 'x-mock-signature'];
+      let event;
+      try {
+        event = provider.parseWebhook(
+          request.rawBody ?? Buffer.alloc(0),
+          typeof signature === 'string' ? signature : undefined,
+        );
+      } catch (error) {
+        if (error instanceof BillingSignatureError) {
+          logger.warn({ requestId: request.id }, 'Webhook de cobrança com assinatura inválida');
+          throw new AuthenticationError('Assinatura inválida.');
+        }
+        throw error;
+      }
+      const outcome = await recordBillingEvent(app.container, provider, event);
+      return reply.status(200).send({ received: true, outcome });
     },
   );
 };

@@ -191,6 +191,11 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Migração `accounts_email` (aditiva; contas existentes marcadas como confirmadas). Variáveis novas no `.env.example`.
   - Validação: lint, typecheck, suíte completa (API 273 testes), build e smoke dos três bundles verdes. Bug de build pego pelo smoke: `nodemailer` precisava ser declarado na API (D-016).
 
+- **Cobrança com Stripe (2026-10-01, D-039)**
+  - Checkout com preço conferido na Stripe, webhook assinado e idempotente processado pela fila relendo o gateway, faturas, troca de plano com proração, downgrade bloqueado quando o uso não cabe, cancelamento/reativação, portal, avisos por e-mail e reprocessamento pela plataforma. Guia em [BILLING](docs/BILLING.md).
+  - 12 testes ponta a ponta com gateway simulado (Fluxo 3: plano → checkout → webhook → plano atualizado), incluindo evento repetido, assinatura inválida, evento de produção em teste, preço adulterado, permissões, isolamento e reprocessamento.
+  - Validação: lint, typecheck, 633 testes, build e smoke dos bundles verdes. Pendente: homologação com conta Stripe (modo teste) quando houver chaves.
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

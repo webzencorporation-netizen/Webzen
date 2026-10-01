@@ -85,5 +85,6 @@ docs/         Arquitetura, WhatsApp, agente, multi-tenancy, segurança, deploy, 
 - [WhatsApp oficial](docs/WHATSAPP.md) e [agente de IA](docs/AI_AGENT.md)
 - [Segurança](docs/SECURITY.md), [deploy](docs/DEPLOYMENT.md) e [onboarding](docs/ONBOARDING_COMPANY.md)
 - [Diagnóstico e recuperação de incidentes](docs/INCIDENTS.md)
+- [Cobrança (Stripe)](docs/BILLING.md) e [auditoria da evolução SaaS](docs/AUDIT_2026-10.md)
 - [Proposta pendente para contabilização de custos](docs/COST_ACCOUNTING_PLAN.md)
 - [Estado real, limitações e próximos passos](PROGRESS.md)

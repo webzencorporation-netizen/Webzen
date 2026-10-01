@@ -14,6 +14,7 @@ import { MockMessagingProvider } from '@botsaas/whatsapp';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import pino from 'pino';
 import { buildApp } from '../../src/app';
+import { MockBillingProvider } from '../../src/modules/billing/mock';
 import { createContainer, type AppContainer } from '../../src/container';
 import { createCompany } from '../../src/modules/platform/companies.service';
 import { InMemoryJobQueue } from '../../src/queues/memory';
@@ -29,6 +30,7 @@ export interface TestHarness {
   messaging: MockMessagingProvider;
   storage: MemoryObjectStorage;
   email: MemoryEmailSender;
+  billing: MockBillingProvider;
   reset(): Promise<void>;
   close(): Promise<void>;
 }
@@ -41,11 +43,12 @@ export async function createTestHarness(): Promise<TestHarness> {
   const messaging = new MockMessagingProvider();
   const storage = new MemoryObjectStorage();
   const email = new MemoryEmailSender();
+  const billing = new MockBillingProvider();
   const container = createContainer({
     env,
     logger: pino({ level: 'silent' }),
     queue,
-    providers: { ai, messaging, storage, email, speechToText: new MockSpeechToText() },
+    providers: { ai, messaging, storage, email, billing, speechToText: new MockSpeechToText() },
   });
   const app = await buildApp(container);
   await app.ready();
@@ -57,6 +60,7 @@ export async function createTestHarness(): Promise<TestHarness> {
     messaging,
     storage,
     email,
+    billing,
     async reset() {
       await truncateAllTables(getSystemDb());
       await seedReferenceData();
@@ -65,6 +69,7 @@ export async function createTestHarness(): Promise<TestHarness> {
       messaging.reset();
       storage.objects.clear();
       email.reset();
+      billing.reset();
     },
     async close() {
       await app.close();

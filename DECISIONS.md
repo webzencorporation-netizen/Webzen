@@ -356,3 +356,20 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Contexto:** o sistema não enviava e-mail. Decisão do responsável: SMTP genérico.
 
 **Decisão:** contrato `EmailSender` em `packages/integrations` (`SmtpEmailSender` com TLS exigido fora da 465, timeouts e `disableFileAccess/disableUrlAccess`; `LogEmailSender` grava `.html` em desenvolvimento; `MemoryEmailSender` nos testes). Produção recusa `log` e remetente `.local`. Mensagens vão para `EmailOutbox` e saem pelo job `email.send`; o corpo é apagado após envio ou falha final. Templates WebZen em `modules/email/templates.ts`, com escape de todo valor dinâmico. `nodemailer` 10 (as versões ≤ 10.0.5 têm alertas altos no `pnpm audit`).
+
+## D-039 — Cobrança com Stripe: preço verificado, webhook idempotente e releitura do gateway
+
+**Contexto:** não havia gateway. Decisão do responsável: Stripe. Requisitos: o navegador nunca define preço, webhooks assinados e idempotentes, sem duplicar pagamentos/faturas, teste e produção separados.
+
+**Decisão:**
+
+- Contrato `BillingProvider` neutro (`modules/billing/provider.ts`) com implementações Stripe (SDK 22, API `2026-08-26.dahlia`, timeout e retries com idempotência da SDK) e simulada (testes; recusada em produção).
+- Checkout: plano + período → Price ID do plano → conferência do preço **na Stripe** (valor, BRL, período, ativo). Divergência recusa a cobrança.
+- Webhook `/webhooks/stripe`: assinatura sobre o corpo bruto → `BillingEvent` único por `(provider, externalId)` → job `billing.event`, que **relê** checkout/assinatura/fatura na Stripe (ordem dos eventos irrelevante, sem payload pessoal no banco). `livemode` diferente do modo da chave → `IGNORED`.
+- Empresa do objeto: assinatura já vinculada → cliente já vinculado → `companyId` gravado pelo servidor no checkout (só se o cliente não for de outra empresa).
+- Proprietário contrata, troca, cancela e reativa (`billing:manage`); administrador só vê (`billing:read`). Downgrade bloqueado quando o uso não cabe no plano novo. Troca imediata com proração da Stripe; cancelamento no fim do período.
+- Cupons = códigos promocionais da Stripe. Portal da Stripe para forma de pagamento.
+- Faturas locais (`Invoice`) para histórico/comprovante; e-mails de pagamento aprovado/recusado e cancelamento.
+- Guia de configuração em [docs/BILLING.md](docs/BILLING.md).
+
+**Limites:** sem nota fiscal, moeda única, sem homologação com conta Stripe real. Uma assinatura removida na Stripe sem evento entregue só é corrigida no próximo evento ou pelo reprocessamento manual.

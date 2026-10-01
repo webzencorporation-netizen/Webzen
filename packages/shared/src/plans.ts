@@ -184,3 +184,8 @@ export function subscriptionGrantsAccess(
   }
   return true;
 }
+
+/** Formata centavos em BRL para mensagens geradas no servidor (e-mails, notificações). */
+export function formatCentsBRL(cents: number, currency = 'BRL'): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(cents / 100);
+}

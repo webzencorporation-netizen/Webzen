@@ -14,6 +14,9 @@ import {
 } from '@botsaas/integrations';
 import { CloudApiProvider, MockMessagingProvider, type MessagingProvider } from '@botsaas/whatsapp';
 import type { Logger } from './lib/logger';
+import { MockBillingProvider } from './modules/billing/mock';
+import type { BillingProvider } from './modules/billing/provider';
+import { StripeBillingProvider } from './modules/billing/stripe';
 
 /** Providers externos ativos. Produção recusa mocks na validação do env (packages/config). */
 export interface Providers {
@@ -22,6 +25,8 @@ export interface Providers {
   storage: ObjectStorageProvider;
   speechToText: SpeechToTextProvider;
   email: EmailSender;
+  /** Nulo = cobrança desligada (BILLING_PROVIDER=none). */
+  billing: BillingProvider | null;
 }
 
 /** Falha de composição: um provider real foi pedido mas não pode ser construído. */
@@ -90,12 +95,23 @@ export function createProviders(env: Env, logger: Logger): Providers {
         })
       : new LogEmailSender(env.EMAIL_LOG_DIR);
 
+  let billing: BillingProvider | null = null;
+  if (env.BILLING_PROVIDER === 'stripe') {
+    billing = new StripeBillingProvider({
+      secretKey: env.STRIPE_SECRET_KEY ?? missing('BILLING_PROVIDER=stripe', 'STRIPE_SECRET_KEY'),
+      webhookSecret:
+        env.STRIPE_WEBHOOK_SECRET ?? missing('BILLING_PROVIDER=stripe', 'STRIPE_WEBHOOK_SECRET'),
+    });
+  }
+  if (env.BILLING_PROVIDER === 'mock') billing = new MockBillingProvider();
+
   const summary = {
     ai: ai.name,
     messaging: messaging.name,
     storage: storage.name,
     speechToText: speechToText.name,
     email: email.name,
+    billing: billing?.name ?? 'none',
   };
   const mocks = Object.entries(summary).filter(
     ([, name]) => name === 'mock' || name === 'local' || name === 'log',
@@ -113,5 +129,5 @@ export function createProviders(env: Env, logger: Logger): Providers {
   } else {
     logger.info({ providers: summary }, 'Providers ativos');
   }
-  return { ai, messaging, storage, speechToText, email };
+  return { ai, messaging, storage, speechToText, email, billing };
 }

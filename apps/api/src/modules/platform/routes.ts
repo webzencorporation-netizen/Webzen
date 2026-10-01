@@ -19,12 +19,19 @@ import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import type { Actor } from '../../context';
 import { auditPlatform } from '../../lib/audit';
-import { idParamSchema, paginationQuerySchema, patchSchema } from '../../lib/http';
+import {
+  idParamSchema,
+  paginated,
+  paginationQuerySchema,
+  patchSchema,
+  toSkipTake,
+} from '../../lib/http';
 import { systemScope } from '../../lib/scope';
 import { periodStart } from '../../lib/time';
 import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
+import { replayBillingEvent } from '../billing/service';
 import { resolveRange, usageBreakdown } from '../usage/breakdown';
 import { costByCompany, summarizeAiUsageByPeriod } from '../usage/report';
 import {
@@ -591,6 +598,41 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
         resourceType: 'User',
         resourceId: user.id,
       });
+      return { ok: true };
+    },
+  );
+
+  // ── Cobrança: eventos do gateway ──────────────────────────────────────────
+  app.get(
+    '/billing/events',
+    {
+      preValidation: platform('platform:usage:read'),
+      schema: {
+        querystring: paginationQuerySchema.extend({
+          status: z.enum(['RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED']).optional(),
+        }),
+      },
+    },
+    async (request) => {
+      const where = request.query.status ? { status: request.query.status } : {};
+      const [items, total] = await Promise.all([
+        systemDb.billingEvent.findMany({
+          where,
+          orderBy: { receivedAt: 'desc' },
+          ...toSkipTake(request.query),
+          include: { company: { select: { id: true, name: true } } },
+        }),
+        systemDb.billingEvent.count({ where }),
+      ]);
+      return paginated(items, total, request.query);
+    },
+  );
+
+  app.post(
+    '/billing/events/:id/replay',
+    { preValidation: platform('platform:companies:write'), schema: { params: idParamSchema } },
+    async (request) => {
+      await replayBillingEvent(container, actorOf(request), request.params.id);
       return { ok: true };
     },
   );

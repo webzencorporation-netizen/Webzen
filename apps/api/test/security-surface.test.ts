@@ -49,6 +49,7 @@ const PUBLIC_ROUTES = new Set([
   'GET /health/ready',
   'GET /webhooks/whatsapp',
   'POST /webhooks/whatsapp',
+  'POST /webhooks/stripe',
 ]);
 /** Escritas sem permissão específica: só marcam notificações do PRÓPRIO usuário como lidas. */
 const USER_SCOPED_WRITES = new Set([

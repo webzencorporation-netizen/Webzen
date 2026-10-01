@@ -1,5 +1,6 @@
 import type { AppContainer } from '../container';
 import { systemScope } from '../lib/scope';
+import { processBillingEvent } from '../modules/billing/service';
 import { processEmail } from '../modules/email/service';
 import { checkUsageAlerts } from '../modules/usage/alerts';
 import { recoverStalledReplies } from '../modules/agent/recovery';
@@ -64,6 +65,10 @@ export const JOB_PROCESSORS: { [N in JobName]: { concurrency: number; run: Proce
   'agent.recover-stalled': { concurrency: 1, run: (c) => recoverStalledReplies(c) },
   'usage.alerts': { concurrency: 1, run: (c) => checkUsageAlerts(c) },
   'email.send': { concurrency: 5, run: (c, data) => processEmail(c, data.emailId) },
+  'billing.event': {
+    concurrency: 2,
+    run: (c, data) => processBillingEvent(c, data.billingEventId),
+  },
 };
 
 export function runJob<N extends JobName>(
