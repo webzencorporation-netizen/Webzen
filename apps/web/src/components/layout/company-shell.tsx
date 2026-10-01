@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LifeBuoy, Menu, Rocket, X } from 'lucide-react';
+import { LifeBuoy, Menu, Rocket, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/misc';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useCan, useRequireSession } from '@/lib/session';
+import { CommandPalette, useCommandPaletteShortcut } from './command-palette';
 import { COMPANY_NAV } from './nav';
 import { NotificationBell } from './notification-bell';
 import { UserMenu } from './user-menu';
@@ -49,6 +50,8 @@ export function CompanyShell({ children }: { children: ReactNode }) {
   const can = useCan();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useCommandPaletteShortcut(setPaletteOpen);
   const features = useQuery({
     queryKey: ['features'],
     queryFn: () => api.get<{ flag: string; enabled: boolean }[]>('/app/company/features'),
@@ -144,11 +147,21 @@ export function CompanyShell({ children }: { children: ReactNode }) {
             <button className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Abrir menu">
               <Menu className="h-5 w-5" />
             </button>
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="flex h-9 w-full max-w-xs items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 text-sm text-slate-500 transition-colors hover:text-foreground"
+              aria-label="Buscar (Ctrl + K)"
+            >
+              <Search className="h-4 w-4" aria-hidden />
+              <span className="hidden flex-1 text-left sm:inline">Buscar…</span>
+              <kbd className="hidden rounded border border-border px-1.5 text-[11px] sm:inline">Ctrl K</kbd>
+            </button>
             <div className="flex-1" />
             <NotificationBell />
             <UserMenu me={me.data} />
           </header>
           <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">{children}</main>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </div>
       </div>
     </div>
