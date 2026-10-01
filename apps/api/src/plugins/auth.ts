@@ -16,6 +16,11 @@ export function registerAuth(app: FastifyInstance): void {
   app.decorateRequest('auth', null);
   app.decorateRequest('tenant', null);
   app.addHook('onRequest', async (request) => {
+    // A API pública v1 não aceita sessão de navegador: só chave de API.
+    if (request.url.startsWith('/api/v1/')) {
+      request.auth = null;
+      return;
+    }
     const token = request.cookies[SESSION_COOKIE];
     request.auth = token ? await loadSession(token, { idleTimeoutMs }) : null;
     // A rota registrada (sem query/entrada crua) define as únicas exceções para

@@ -12,6 +12,7 @@ export function SettingsNav() {
   const items = [
     { href: '/app/settings', label: 'Empresa', visible: true },
     { href: '/app/settings/billing', label: 'Assinatura', visible: can('billing:read') },
+    { href: '/app/settings/developer', label: 'API e webhooks', visible: can('developer:manage') },
     { href: '/app/settings/security', label: 'Conta e segurança', visible: true },
   ].filter((item) => item.visible);
   return (

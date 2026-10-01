@@ -16,6 +16,7 @@ const COLUMNS = [
     title: 'Ajuda',
     links: [
       { href: '/#perguntas', label: 'Perguntas frequentes' },
+      { href: '/docs/api', label: 'Documentação da API' },
       { href: `mailto:${SITE.supportEmail}`, label: 'Suporte' },
       { href: '/status', label: 'Status do sistema' },
     ],

@@ -80,7 +80,7 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
     name: 'Business',
     tagline: 'Para operações com alto volume de atendimento.',
     description:
-      'Os maiores limites, API, webhooks, automações sem limite, suporte prioritário e sem a marca WebZen.',
+      'Os maiores limites, API, webhooks, automações sem limite e suporte prioritário.',
     priceMonthlyCents: 75_000,
     priceYearlyCents: 750_000,
     limits: {
@@ -103,12 +103,17 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
       'API_ACCESS',
       'WEBHOOKS',
       'PRIORITY_SUPPORT',
-      'REMOVE_BRANDING',
     ],
     highlight: false,
     sortOrder: 30,
   },
 ];
+
+/**
+ * Recursos reservados: existem como entitlement, mas ainda não têm superfície no produto
+ * (não há onde a marca WebZen apareça para o cliente final). Não entram em planos nem na vitrine.
+ */
+export const RESERVED_FEATURES: readonly FeatureFlagKey[] = ['REMOVE_BRANDING', 'WHITE_LABEL'];
 
 export const FEATURE_LABELS: Record<FeatureFlagKey, string> = {
   AI_AGENT: 'Atendente com IA no WhatsApp',

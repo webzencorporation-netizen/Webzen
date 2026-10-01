@@ -6,6 +6,7 @@ const PAGES: { path: string; priority: number; changeFrequency: 'weekly' | 'mont
   { path: '/precos', priority: 0.9, changeFrequency: 'monthly' },
   { path: '/cadastro', priority: 0.7, changeFrequency: 'yearly' },
   { path: '/login', priority: 0.4, changeFrequency: 'yearly' },
+  { path: '/docs/api', priority: 0.4, changeFrequency: 'monthly' },
   { path: '/status', priority: 0.3, changeFrequency: 'weekly' },
   { path: '/termos', priority: 0.2, changeFrequency: 'yearly' },
   { path: '/privacidade', priority: 0.2, changeFrequency: 'yearly' },

@@ -323,7 +323,7 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 
 - `packages/shared/src/plans.ts` (`DEFAULT_PLANS`) é a única definição de preços mensal/anual, limites e recursos no código, mais rótulos, limiares de aviso (70/90/100%), cálculo de economia anual e a regra de acesso pela assinatura. Nenhum outro arquivo repete preço ou testa o nome do plano.
 - Em execução, a tabela `Plan` é a fonte da verdade, editável no painel da plataforma. O seed de referência cria planos ausentes e só reaplica o catálogo com `--sync-plans` (preserva ajustes do administrador). `priceCents` foi **renomeado** para `priceMonthlyCents` (migração sem perda); novos campos: preço anual, IDs de preço da Stripe (`STRIPE_PRICE_<PLANO>_<PERÍODO>`), visibilidade, destaque e ordem.
-- Entitlements novos: `CALENDAR_SYNC`, `API_ACCESS`, `WEBHOOKS`, `PRIORITY_SUPPORT`, `REMOVE_BRANDING`, `WHITE_LABEL` (este último reservado, em nenhum plano). Métrica nova `AUTOMATIONS` (automações ativas), aplicada na criação e na reativação.
+- Entitlements novos: `CALENDAR_SYNC`, `API_ACCESS`, `WEBHOOKS`, `PRIORITY_SUPPORT`, `REMOVE_BRANDING`, `WHITE_LABEL`. Os dois últimos são **reservados** (`RESERVED_FEATURES`): ainda não há superfície onde a marca WebZen apareça para o cliente final, então não entram em plano nem na vitrine. Métrica nova `AUTOMATIONS` (automações ativas), aplicada na criação e na reativação.
 - Agenda própria passa a estar em todos os planos; Google Agenda é do Pro em diante.
 - Assinatura: `TRIALING` (dentro do prazo), `ACTIVE` e `PAST_DUE` liberam o uso; `UNPAID`, `INCOMPLETE`, `PAUSED`, `CANCELLED` e trial vencido bloqueiam a **IA** (atendimento e "Testar agente"), que é o custo variável. O cliente continua vendo e editando os próprios dados. Empresas **sem** assinatura (geridas manualmente) mantêm o comportamento anterior.
 - Avisos de consumo a 70/90/100% por job do worker (`usage.alerts`, a cada 30 min), com chave de deduplicação por métrica, limiar e mês.
@@ -388,3 +388,18 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - Rótulos em caixa alta removidos (frase normal), títulos de aba por página.
 
 **Limites:** textos jurídicos provisórios (precisam de revisão de advogado). Sem imagem Open Graph dedicada. O tema escuro inverte tons; telas novas devem usar tokens semânticos em vez de `slate`/`white` quando o contraste importar.
+
+## D-041 — API pública v1, chaves de API e webhooks de saída
+
+**Contexto:** o plano Business vende "API e chaves de acesso" e "Webhooks de eventos", que não existiam. Requisitos: chave mostrada uma vez e guardada só como hash, permissões por chave, revogação imediata, limites por chave, idempotência nas criações, webhooks assinados, com retry e sem SSRF.
+
+**Decisão:**
+
+- **Chaves** (`ApiKey`): `wz_live_` (produção) ou `wz_test_` + 40 caracteres; banco guarda SHA-256 e os 4 últimos caracteres (`wz_live_••••••••4k82`). Escopos `contacts:read`, `contacts:write`, `conversations:read`, `messages:send`. A cada requisição o plano é reavaliado (sem `API_ACCESS` ou assinatura inativa = 403), então rebaixar o plano desliga as chaves. Chave de outro ambiente é recusada. Gestão só com `developer:manage` (dono e administrador), com auditoria de criação, alteração e revogação.
+- **API v1** em `/api/v1` (versionada no prefixo): contatos (listar, ler, criar), conversas e mensagens (ler) e envio de texto na janela de 24 h. Autenticação **só** por Bearer: o cookie do painel é ignorado e o CSRF não se aplica. 120 req/min por chave (hash da chave no Redis). `Idempotency-Key` nos POST guarda a resposta por 24 h. Respostas em formato público (sem campos internos). Novo guard `apiKey(escopo)` no inventário de endpoints; teste exige guard em toda rota v1. OpenAPI 3.1 gerado dos schemas Zod só para a v1 (`/api/public/openapi.json`) e página `/docs/api`.
+- **Webhooks**: endpoints com segredo `whsec_` mostrado uma vez e cifrado com `SecretBox`; eventos públicos estáveis mapeados dos eventos de domínio (`DOMAIN_TO_WEBHOOK_EVENT`), incluindo os novos `conversation.closed → conversation.completed` e `subscription.updated`. O despacho de eventos cria uma entrega por endpoint (única por endpoint+evento) e o job `webhook.deliver` envia com assinatura `t=<unix>,v1=<HMAC-SHA256 de "t.corpo">`, 7 tentativas com backoff exponencial; após 15 falhas finais seguidas o endpoint é desativado com aviso no painel. Reenvio mantém o `id` do evento.
+- **SSRF** (`lib/safe-http.ts`): em produção só `https`, sem credenciais na URL, portas restritas, sem redirecionamento, timeout de 10 s; o IP é validado no `lookup` da própria conexão (sem janela para DNS rebinding) contra redes privadas, loopback, link-local/metadados, CGNAT, multicast e reservados, inclusive IPv4 mapeado em IPv6. Em desenvolvimento/testes, redes privadas são permitidas para testar com servidor local.
+
+**Bug evitado:** a primeira versão usava a regra `::ffff:0:0/96` no `BlockList` do Node, que compara IPv4 contra ela e bloquearia **todos** os destinos IPv4 em produção; o teste com `8.8.8.8` pegou antes do commit.
+
+**Limites:** a API v1 não cobre agenda, CRM e templates. Sem assinatura de webhook por chave rotativa dupla (troca de segredo é imediata). Payload dos eventos traz IDs (o receptor consulta a API para detalhes).

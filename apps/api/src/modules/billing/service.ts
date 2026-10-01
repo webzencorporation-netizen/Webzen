@@ -15,6 +15,8 @@ import type { AppContainer } from '../../container';
 import type { CompanyScope } from '../../context';
 import { audit, auditPlatform } from '../../lib/audit';
 import { getOwnCompany, updateOwnCompany } from '../../lib/company-record';
+import { emitDomainEvent } from '../../lib/events';
+import { systemScope } from '../../lib/scope';
 import { paginated, toSkipTake, type PaginationQuery } from '../../lib/http';
 import { JOB_RETRY_POLICY } from '../../queues/types';
 import { queueEmail } from '../email/service';
@@ -458,6 +460,22 @@ export async function syncSubscription(
           }),
         ]),
   ]);
+
+  const changed =
+    current?.status !== remote.status ||
+    current?.planId !== planId ||
+    current?.interval !== data.interval ||
+    current?.cancelAtPeriodEnd !== remote.cancelAtPeriodEnd;
+  if (changed) {
+    // Evento de domínio (automações e webhook `subscription.updated` da própria empresa).
+    await emitDomainEvent(systemScope(container, companyId), 'subscription.updated', {
+      status: remote.status,
+      planKey: mapped?.plan.key ?? null,
+      interval: data.interval,
+      cancelAtPeriodEnd: remote.cancelAtPeriodEnd,
+      currentPeriodEnd: remote.currentPeriodEnd?.toISOString() ?? null,
+    });
+  }
 
   const becameActive = remote.status === 'ACTIVE' && current?.status !== 'ACTIVE';
   if (becameActive && mapped) {

@@ -1,5 +1,5 @@
 import { systemDb } from '@botsaas/database';
-import { FEATURE_LABELS, yearlySavings, type FeatureFlagKey } from '@botsaas/shared';
+import { FEATURE_LABELS, RESERVED_FEATURES, yearlySavings, type FeatureFlagKey } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { AppContainer } from '../../container';
 import { getPlatformHealth } from '../platform/health.service';
@@ -24,10 +24,9 @@ export async function listPublicPlans() {
   });
   return plans.map((plan) => ({
     ...plan,
-    features: plan.features.map((flag: FeatureFlagKey) => ({
-      flag,
-      label: FEATURE_LABELS[flag],
-    })),
+    features: plan.features
+      .filter((flag: FeatureFlagKey) => !RESERVED_FEATURES.includes(flag))
+      .map((flag: FeatureFlagKey) => ({ flag, label: FEATURE_LABELS[flag] })),
     yearlySavings: yearlySavings(plan.priceMonthlyCents, plan.priceYearlyCents),
   }));
 }
@@ -102,6 +101,11 @@ export const publicRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get('/plans', async (_request, reply) => {
     reply.header('cache-control', 'public, max-age=300');
     return { plans: await listPublicPlans() };
+  });
+
+  app.get('/openapi.json', async (_request, reply) => {
+    reply.header('cache-control', 'public, max-age=300');
+    return app.swagger();
   });
 
   app.get('/status', async (_request, reply) => {

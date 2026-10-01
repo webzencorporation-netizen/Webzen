@@ -269,6 +269,12 @@ enum AuthTokenType {
   PASSWORD_RESET
 }
 
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 enum BillingEventStatus {
   RECEIVED
   PROCESSED
@@ -437,6 +443,9 @@ model Company {
   subscription       Subscription?
   invoices           Invoice[]
   invitations        Invitation[]
+  apiKeys            ApiKey[]
+  webhookEndpoints   WebhookEndpoint[]
+  webhookDeliveries  WebhookDelivery[]
   billingEvents      BillingEvent[]
   featureFlags       CompanyFeatureFlag[]
   automations        Automation[]
@@ -1467,4 +1476,75 @@ model EmailOutbox {
   createdAt DateTime    @default(now()) @db.Timestamptz(6)
 
   @@index([status, createdAt])
+}
+
+/// Chave de API da empresa (API pública v1). Só o SHA-256 é guardado; a chave aparece uma vez.
+model ApiKey {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  companyId   String    @db.Uuid
+  name        String
+  /// Ex.: "wz_live_" — identifica o ambiente sem revelar a chave.
+  prefix      String
+  keyHash     String    @unique
+  /// Últimos 4 caracteres, para exibir "wz_live_••••4k82".
+  last4       String
+  /// Escopos da API pública (ex.: contacts:read, messages:send).
+  scopes      String[]
+  createdById String?   @db.Uuid
+  lastUsedAt  DateTime? @db.Timestamptz(6)
+  lastUsedIp  String?
+  revokedAt   DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+}
+
+/// Destino de webhooks de saída da empresa. O segredo de assinatura é cifrado (SecretBox).
+model WebhookEndpoint {
+  id                  String    @id @default(uuid(7)) @db.Uuid
+  companyId           String    @db.Uuid
+  url                 String
+  description         String?
+  events              String[]
+  secretEncrypted     String
+  isActive            Boolean   @default(true)
+  /// Falhas finais seguidas; muitas desativam o endpoint automaticamente.
+  consecutiveFailures Int       @default(0)
+  disabledReason      String?
+  lastDeliveryAt      DateTime? @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([companyId])
+}
+
+/// Uma entrega de evento para um endpoint. Única por (endpoint, evento): retry não duplica.
+model WebhookDelivery {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  companyId      String                @db.Uuid
+  endpointId     String                @db.Uuid
+  event          String
+  /// ID estável do evento (o receptor usa para deduplicar).
+  eventId        String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  responseStatus Int?
+  lastError      String?
+  deliveredAt    DateTime?             @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(6)
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventId])
+  @@index([companyId, createdAt])
+  @@index([endpointId, createdAt])
 }

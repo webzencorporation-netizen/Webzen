@@ -205,6 +205,14 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - E2E: 12 cenários (3 novos: site público, cadastro com confirmação, recuperação de senha). Corrigido: E2E falhava ao rodar duas vezes em 15 min por causa do limite de login por conta no Redis.
   - Validação: lint, typecheck, 641 testes, build, smoke dos bundles e E2E verdes.
 
+- **API pública v1, chaves de API e webhooks (2026-10-01, D-041)**
+  - Chaves com escopos, exibição única, revogação e desligamento automático ao rebaixar o plano; API v1 (contatos, conversas, envio de mensagens) com limite por chave e idempotência; OpenAPI e página `/docs/api`.
+  - Webhooks assinados com retry exponencial, desativação após falhas seguidas, reenvio, evento de teste e histórico de entregas; proteção SSRF com validação de IP na conexão.
+  - Tela Configurações → API e webhooks (convite para o Business quando o plano não inclui).
+  - "Sem a marca WebZen" deixou de ser vendido no Business (não há onde a marca apareça para o cliente final): recurso reservado.
+  - Bug evitado antes do commit: bloqueio de todo IPv4 pela regra de IPv4 mapeado no BlockList.
+  - Validação: lint, typecheck, 667 testes (26 novos), build e smoke dos bundles verdes.
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

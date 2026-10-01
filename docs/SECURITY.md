@@ -61,6 +61,10 @@ Multipart aceita um arquivo, até dez campos e `UPLOAD_MAX_BYTES` (16 MiB por pa
 
 [Validação do ambiente](../packages/config/src/env.ts) recusa mocks de IA, WhatsApp e STT em produção, sem flag de exceção, divergindo de D-008. Também recusa storage local em produção. Esses checks não comprovam a validade das credenciais nem a disponibilidade externa.
 
+## API pública, chaves e webhooks (D-041)
+
+Rotas `/api/v1` aceitam só `Authorization: Bearer wz_...` (o cookie de sessão é ignorado, por isso não há CSRF nelas). A chave é guardada como SHA-256; a cada requisição são conferidos revogação, ambiente da chave, situação da empresa, recurso `API_ACCESS` do plano e assinatura ativa. Limite de 120 req/min por chave e `Idempotency-Key` nos POST. Webhooks de saída são assinados com HMAC-SHA256 (segredo cifrado no banco) e enviados por [safe-http](../apps/api/src/lib/safe-http.ts): https obrigatório em produção, IP validado na conexão contra redes internas e metadados de nuvem, sem redirecionamentos e com timeout.
+
 ## Inventário de endpoints
 
 Toda rota registra, via [route-inventory](../apps/api/src/plugins/route-inventory.ts), os guards que a protegem (`authenticated`, `company(permissão)`, `platform(permissão)`). O teste [security-surface](../apps/api/test/security-surface.test.ts) impõe a política sobre as ~155 rotas: só login, logout, callback OAuth (state assinado), health e webhook (HMAC) são públicas; toda rota `/api/app/*` exige empresa da sessão e toda escrita exige permissão específica (exceto marcar as próprias notificações como lidas); toda rota `/api/platform/*` exige papel de plataforma. O mesmo teste chama cada rota sem sessão (401), como dono de empresa nas rotas da plataforma (403) e como `VIEWER` em todas as escritas sem permissão (403). Uma rota nova sem guard quebra o CI.

@@ -1,4 +1,4 @@
-import { FEATURE_FLAGS, FEATURE_LABELS, type UsageMetric } from '@botsaas/shared';
+import { FEATURE_FLAGS, FEATURE_LABELS, RESERVED_FEATURES, type UsageMetric } from '@botsaas/shared';
 import { Check, Minus } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -24,8 +24,8 @@ const LIMIT_ROWS: { metric: UsageMetric; label: string; format?: (value: number)
   { metric: 'STORAGE_MB', label: 'Armazenamento', format: (value) => (value >= 1024 ? `${numberFormat.format(value / 1024)} GB` : `${value} MB`) },
 ];
 
-/** Recursos à venda (o white label é reservado para planos futuros). */
-const FEATURE_ROWS = FEATURE_FLAGS.filter((flag) => flag !== 'WHITE_LABEL');
+/** Recursos à venda (os reservados ainda não têm superfície no produto). */
+const FEATURE_ROWS = FEATURE_FLAGS.filter((flag) => !RESERVED_FEATURES.includes(flag));
 
 const BILLING_FAQ = [
   { q: 'Posso trocar de plano depois?', a: 'Sim, a qualquer momento pelo painel. No upgrade, você paga só a diferença proporcional do período. No downgrade, o uso atual precisa caber nos limites do plano menor.' },

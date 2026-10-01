@@ -1,6 +1,7 @@
 import type { AppContainer } from '../container';
 import { systemScope } from '../lib/scope';
 import { processBillingEvent } from '../modules/billing/service';
+import { deliverWebhook } from '../modules/developer/webhooks';
 import { processEmail } from '../modules/email/service';
 import { checkUsageAlerts } from '../modules/usage/alerts';
 import { recoverStalledReplies } from '../modules/agent/recovery';
@@ -69,6 +70,7 @@ export const JOB_PROCESSORS: { [N in JobName]: { concurrency: number; run: Proce
     concurrency: 2,
     run: (c, data) => processBillingEvent(c, data.billingEventId),
   },
+  'webhook.deliver': { concurrency: 10, run: (c, data) => deliverWebhook(c, data) },
 };
 
 export function runJob<N extends JobName>(

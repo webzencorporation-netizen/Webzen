@@ -2,6 +2,7 @@ import { isUniqueConstraintError, type Prisma } from '@botsaas/database';
 import type { AppContainer } from '../../container';
 import type { CompanyScope } from '../../context';
 import { emitDomainEvent } from '../../lib/events';
+import { fanOutWebhooks } from '../developer/webhooks';
 import { notify } from '../../lib/notifications';
 import { systemScope } from '../../lib/scope';
 import { addTagByName, createNote } from '../company/contacts/service';
@@ -225,5 +226,8 @@ export async function dispatchDomainEvent(
       data: { runCount: { increment: 1 }, lastRunAt: new Date() },
     });
   }
+  // Webhooks de saída: cria as entregas antes de marcar o evento como processado (um retry
+  // do job refaz o que faltou; a unicidade por endpoint+evento impede duplicar).
+  await fanOutWebhooks(scope, event);
   await scope.db.domainEvent.update({ where: { id: event.id }, data: { processedAt: new Date() } });
 }

@@ -3,6 +3,7 @@ import { NotFoundError, ValidationError } from '@botsaas/shared';
 import { getMessagingWindow } from '@botsaas/whatsapp';
 import type { CompanyScope } from '../../../context';
 import { audit } from '../../../lib/audit';
+import { emitDomainEvent } from '../../../lib/events';
 import { toSkipTake, type PaginationQuery } from '../../../lib/http';
 import { resolveCredentials } from '../../messaging/accounts';
 import {
@@ -364,6 +365,16 @@ export async function setConversationStatus(
     conversationId,
     status === 'CLOSED' ? 'Conversa encerrada.' : 'Conversa reaberta.',
   );
+  if (status === 'CLOSED') {
+    const conversation = await scope.db.conversation.findUniqueOrThrow({
+      where: { id: conversationId },
+      select: { contactId: true },
+    });
+    await emitDomainEvent(scope, 'conversation.closed', {
+      conversationId,
+      contactId: conversation.contactId,
+    });
+  }
 }
 
 /** Exclusão definitiva de conversa (LGPD). */

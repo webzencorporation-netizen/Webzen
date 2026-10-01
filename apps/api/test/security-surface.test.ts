@@ -45,6 +45,7 @@ const PUBLIC_ROUTES = new Set([
   'POST /api/auth/invitations/accept',
   'GET /api/public/plans',
   'GET /api/public/status',
+  'GET /api/public/openapi.json',
   'GET /api/integrations/google/callback',
   'GET /health',
   'GET /health/ready',

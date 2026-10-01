@@ -43,6 +43,7 @@ export const COMPANY_PERMISSIONS = [
   'privacy:manage',
   'billing:read',
   'billing:manage',
+  'developer:manage',
 ] as const;
 
 export type CompanyPermission = (typeof COMPANY_PERMISSIONS)[number];
