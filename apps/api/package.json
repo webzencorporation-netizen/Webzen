@@ -18,7 +18,8 @@
     "homolog:whatsapp": "tsx --env-file-if-exists=../../.env scripts/homolog-whatsapp.ts",
     "homolog:meta": "tsx --env-file-if-exists=../../.env scripts/homolog-meta.ts",
     "test:watch": "vitest",
-    "seed": "tsx --env-file-if-exists=../../.env src/seed/run.ts"
+    "seed": "tsx --env-file-if-exists=../../.env src/seed/run.ts",
+    "stripe:forward": "tsx --env-file-if-exists=../../.env scripts/stripe-forward.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
