@@ -15,7 +15,7 @@ beforeEach(() => harness.reset());
 describe('catálogo de modelos', () => {
   it('mostra só os modelos do provedor ativo; o mock mostra todos', async () => {
     const meta = (await listAvailableModels('meta')).map((model) => model.id);
-    expect(meta).toEqual(['muse-spark-1.3']);
+    expect(meta).toEqual(['muse-spark-1.2', 'muse-spark-1.3']);
 
     const anthropic = (await listAvailableModels('anthropic')).map((model) => model.id);
     expect(anthropic).toContain('claude-opus-5');
