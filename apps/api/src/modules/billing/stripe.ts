@@ -249,7 +249,17 @@ export class StripeBillingProvider implements BillingProvider {
       expand: ['invoice_settings.default_payment_method'],
     });
     if (customer.deleted) return null;
-    const method = customer.invoice_settings.default_payment_method;
+    let method = customer.invoice_settings.default_payment_method;
+    if (!method) {
+      // O Checkout em modo assinatura guarda o cartão na assinatura, não no cliente.
+      const subscriptions = await this.stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        limit: 1,
+        expand: ['data.default_payment_method'],
+      });
+      method = subscriptions.data[0]?.default_payment_method ?? null;
+    }
     if (!method || typeof method === 'string' || !method.card) return null;
     return {
       brand: method.card.brand,

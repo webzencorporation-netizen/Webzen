@@ -221,7 +221,9 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
 
 - **Novidades, documentação e auditoria final parcial (2026-10-01)**: página `/novidades` (changelog em `apps/web/src/lib/changelog.ts`), paleta Ctrl+K, README do WebZen, DEPLOYMENT com config de SMTP/Stripe, passos pós-merge e tabela de backups, ARCHITECTURE com `/api/v1`, `/webhooks/stripe` e jobs novos; teste que obriga o `.env.example` a documentar toda variável. Varreduras: sem TODO/FIXME, `console.log`, `any`, `@ts-ignore`/`eslint-disable` no código-fonte; `check:secrets` e `pnpm audit` limpos; nenhum link interno quebrado.
 
-## Ponto de retomada (evolução SaaS WebZen, branch `feat/webzen-saas`, PR #6)
+## Ponto de retomada (evolução SaaS WebZen, PRs #1–#6 mesclados no `main` em 2026-10-03)
+
+**Pós-merge concluído em 2026-10-03:** as 4 migrações (`billing_plans`, `accounts_email`, `api_keys_webhooks`, `support_feedback`) aplicadas no Neon e `seed --reference --sync-plans` executado: Starter/Pro/Business com R$ 250/450/750 por mês e R$ 2.500/4.500/7.500 por ano; nenhum dado de demonstração no Neon. Falta, com credenciais do responsável: preços e webhook na Stripe (`docs/BILLING.md`) e SMTP (`docs/DEPLOYMENT.md`).
 
 Etapas concluídas (commits no PR): auditoria; catálogo de planos/entitlements; contas self-service e e-mail; cobrança Stripe; interface WebZen e site público; API v1/chaves/webhooks; suporte; indicadores; Ctrl+K; novidades e docs.
 

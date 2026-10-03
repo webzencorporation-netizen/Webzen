@@ -29,6 +29,7 @@
     "db:migrate": "pnpm --filter @botsaas/database run migrate:dev",
     "db:migrate:deploy": "pnpm --filter @botsaas/database run migrate:deploy",
     "db:seed": "pnpm --filter @botsaas/api run seed",
+    "stripe:forward": "pnpm --filter @botsaas/api run stripe:forward",
     "db:studio": "pnpm --filter @botsaas/database run studio"
   },
   "devDependencies": {
