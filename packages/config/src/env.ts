@@ -136,9 +136,11 @@ export const envSchema = z.object({
 
   // E-mail
   /** smtp = envio real; log = grava os e-mails em EMAIL_LOG_DIR (desenvolvimento). */
-  EMAIL_PROVIDER: z.enum(['smtp', 'log']).default('log'),
+  EMAIL_PROVIDER: z.enum(['smtp', 'brevo', 'log']).default('log'),
   EMAIL_FROM: z.string().min(3).default('WebZen <nao-responda@webzen.local>'),
   EMAIL_LOG_DIR: z.string().default('./.local/mail'),
+  /** API transacional da Brevo (xkeysib-...): para hospedagens que bloqueiam SMTP. */
+  BREVO_API_KEY: optionalString,
   SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   /** true = TLS direto (porta 465); false = STARTTLS quando o servidor oferece. */
@@ -201,11 +203,14 @@ export function validateEnvRules(env: Env): string[] {
       issues.push('STORAGE_PROVIDER=local não é recomendado em produção; use s3 (S3/R2).');
     if (!env.ENCRYPTION_KEY) issues.push('ENCRYPTION_KEY é obrigatória em produção.');
     if (env.EMAIL_PROVIDER === 'log')
-      issues.push('EMAIL_PROVIDER=log não é permitido em produção; configure SMTP.');
+      issues.push('EMAIL_PROVIDER=log não é permitido em produção; configure SMTP ou Brevo.');
     if (env.BILLING_PROVIDER === 'mock')
       issues.push('BILLING_PROVIDER=mock não é permitido em produção.');
     if (env.EMAIL_FROM.includes('webzen.local'))
       issues.push('EMAIL_FROM precisa de um remetente real em produção.');
+  }
+  if (env.EMAIL_PROVIDER === 'brevo' && !env.BREVO_API_KEY?.startsWith('xkeysib-')) {
+    issues.push('BREVO_API_KEY (xkeysib-...) é obrigatória quando EMAIL_PROVIDER=brevo.');
   }
   if (env.EMAIL_PROVIDER === 'smtp' && !env.SMTP_HOST) {
     issues.push('SMTP_HOST é obrigatória quando EMAIL_PROVIDER=smtp.');

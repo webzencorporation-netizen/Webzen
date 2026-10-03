@@ -17,5 +17,6 @@ export {
 export * from './stt';
 export * from './email/types';
 export { SmtpEmailSender, type SmtpConfig } from './email/smtp';
+export { BrevoEmailSender, parseMailbox, type BrevoConfig } from './email/brevo';
 export { LogEmailSender } from './email/log';
 export { MemoryEmailSender } from './email/memory';

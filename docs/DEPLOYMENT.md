@@ -82,6 +82,23 @@ pnpm db:seed -- --reference --sync-plans        # aplica os preços R$ 250/450/7
 
 As quatro migrações só adicionam tabelas, colunas e valores de enum; `priceCents` é renomeado para `priceMonthlyCents` sem perda, e as contas existentes são marcadas como e-mail confirmado. Configure SMTP e Stripe antes de abrir o cadastro público (`SIGNUP_ENABLED=true`).
 
+## Produção atual (Railway, desde 2026-10-03)
+
+Projeto Railway `webzen`, ambiente `production`, todos os serviços a partir do branch `main` do GitHub (deploy automático a cada push):
+
+| Serviço | Build / start | Endereço |
+| ------- | ------------- | -------- |
+| `api` | `pnpm --filter @botsaas/api run build` / `start` (porta 8080, `API_HOST=::` para a rede interna) | https://api-production-9e6f.up.railway.app |
+| `worker` | mesmo build / `start:worker` | sem endereço público |
+| `web` | `pnpm --filter @botsaas/web run build` / `start` (porta 3000; `API_INTERNAL_URL` = rede interna da `api`) | https://web-production-0bc388.up.railway.app |
+| `Redis` | template oficial | só rede interna |
+
+- Banco no Neon, arquivos no R2, e-mail pela **API HTTP da Brevo** (`EMAIL_PROVIDER=brevo` + `BREVO_API_KEY`): a Railway bloqueia SMTP de saída fora do plano Pro (o primeiro envio por SMTP falhou com "Connection timeout"). Na Brevo, o bloqueio de IPs desconhecidos precisa ficar desligado, porque os IPs da Railway mudam, e o remetente de `EMAIL_FROM` precisa estar verificado, cobrança Stripe em modo produção com webhook `…/webhooks/stripe`.
+- Configurações não secretas ficam como variáveis compartilhadas do ambiente e cada serviço as referencia (`${{shared.NOME}}`); a Railway não injeta as compartilhadas sozinha. `PORT` é definido por serviço porque o healthcheck da Railway usa essa variável.
+- Segredos saem do `.env.production` local direto para a API GraphQL da Railway com `RAILWAY_TOKEN` (também no `.env.production`), sem passar por chat ou logs.
+- Migrações continuam manuais e só depois do merge (`pnpm db:migrate:deploy` contra o Neon).
+- Pendente: `TRUST_PROXY` (hoje os limites por IP usam o IP do proxy interno), webhook do WhatsApp no app da Meta (`…/webhooks/whatsapp` com o `WHATSAPP_WEBHOOK_VERIFY_TOKEN`), domínio próprio.
+
 ## Backups
 
 | O quê                    | Como                                                                                                                   | Frequência sugerida                                   |
