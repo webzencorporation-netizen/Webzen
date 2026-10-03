@@ -97,7 +97,9 @@ Projeto Railway `webzen`, ambiente `production`, todos os serviços a partir do 
 - Configurações não secretas ficam como variáveis compartilhadas do ambiente e cada serviço as referencia (`${{shared.NOME}}`); a Railway não injeta as compartilhadas sozinha. `PORT` é definido por serviço porque o healthcheck da Railway usa essa variável.
 - Segredos saem do `.env.production` local direto para a API GraphQL da Railway com `RAILWAY_TOKEN` (também no `.env.production`), sem passar por chat ou logs.
 - Migrações continuam manuais e só depois do merge (`pnpm db:migrate:deploy` contra o Neon).
-- Pendente: `TRUST_PROXY` (hoje os limites por IP usam o IP do proxy interno), webhook do WhatsApp no app da Meta (`…/webhooks/whatsapp` com o `WHATSAPP_WEBHOOK_VERIFY_TOKEN`), domínio próprio.
+- `TRUST_PROXY=fd00::/8,10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16` (redes internas da Railway). Sem isso, todo acesso pelo painel chegava com o IP interno do serviço `web` (`fd12:…`) e todos os clientes dividiam o mesmo limite de login/requisições. Verificado: painel e acesso direto resolvem o IP real; IP forjado em `X-Forwarded-For` é ignorado.
+- WhatsApp: webhook do app da Meta em `…/webhooks/whatsapp` (campo `messages`). O app que gera o token precisa estar inscrito na WABA (`POST /<WABA>/subscribed_apps`); configurar o webhook no app não faz isso sozinho — sem a inscrição, a Meta não entrega nenhuma mensagem (aconteceu em 2026-10-03: a WABA estava inscrita em outro app).
+- Pendente: token permanente do WhatsApp (usuário do sistema no Business Manager; o token de teste expira em 24 h), domínio próprio.
 
 ## Backups
 

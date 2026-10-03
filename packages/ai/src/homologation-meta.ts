@@ -363,8 +363,11 @@ export async function runMetaHomologation(
       return { status: 'fail', detail: 'modelo inexistente foi aceito' };
     } catch (error) {
       const status = statusOf(error);
+      // 400 é definitivo; 404 é tratado como instabilidade (a Meta devolve 404 intermitente
+      // para modelos válidos), então o provider repete e marca como retryable.
       const ok =
-        error instanceof AIProviderError && !error.retryable && (status === 400 || status === 404);
+        error instanceof AIProviderError &&
+        ((status === 400 && !error.retryable) || (status === 404 && error.retryable));
       return {
         status: ok ? 'ok' : 'fail',
         detail: `${describeError(error)}; retryable=${error instanceof AIProviderError ? error.retryable : '?'}`,
