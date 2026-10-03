@@ -50,6 +50,15 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice & { displayName: s
     cacheWriteUsdPerMTok: 12.5,
     cacheReadUsdPerMTok: 0.25,
   },
+  // Mesma tabela da 1.3 (eesel.ai e openrouter.ai, out/2026). Em produção desde 2026-10-03:
+  // a 1.3 passou a responder 404 "Model not found or access denied" na maioria das chamadas.
+  'muse-spark-1.2': {
+    displayName: 'Muse Spark 1.2 (Meta)',
+    inputUsdPerMTok: 1.25,
+    outputUsdPerMTok: 4.25,
+    cacheWriteUsdPerMTok: 1.25,
+    cacheReadUsdPerMTok: 0.15,
+  },
   'muse-spark-1.3': {
     displayName: 'Muse Spark 1.3 (Meta)',
     inputUsdPerMTok: 1.25,
