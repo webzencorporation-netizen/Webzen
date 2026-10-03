@@ -226,6 +226,7 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
 Etapas concluídas (commits no PR): auditoria; catálogo de planos/entitlements; contas self-service e e-mail; cobrança Stripe; interface WebZen e site público; API v1/chaves/webhooks; suporte; indicadores; Ctrl+K; novidades e docs.
 
 Próximos passos, nesta ordem:
+
 1. Retenção por plano (histórico limitado no plano menor) usando `runRetention` em `apps/api/src/modules/maintenance/service.ts` — avaliar antes se vale (hoje a retenção é escolha da empresa).
 2. Testes E2E restantes dos fluxos manuais: convite → aceite → permissões (Fluxo 4); limite do plano → tela de upgrade (Fluxo 5); isolamento entre empresas na UI (Fluxo 6); usuário comum → `/platform` negado (Fluxo 8, já coberto em `critical-flows`).
 3. Auditoria final completa (lint, typecheck, testes, build, smoke, E2E) e o resumo final em 20 itens pedido pelo responsável.
