@@ -253,6 +253,17 @@ describe('configuração de ambiente', () => {
       parseEnv({ ...local, EMAIL_PROVIDER: 'smtp', SMTP_HOST: 'smtp.test', SMTP_USER: 'u' }),
     ).toThrow(/SMTP_PASSWORD/);
   });
+
+  it('Brevo pela API exige a chave xkeysib-', () => {
+    expect(() => parseEnv({ ...local, EMAIL_PROVIDER: 'brevo' })).toThrow(/BREVO_API_KEY/);
+    expect(() =>
+      parseEnv({ ...local, EMAIL_PROVIDER: 'brevo', BREVO_API_KEY: 'xsmtpsib-errada' }),
+    ).toThrow(/BREVO_API_KEY/);
+    expect(
+      parseEnv({ ...local, EMAIL_PROVIDER: 'brevo', BREVO_API_KEY: 'xkeysib-fixture' })
+        .EMAIL_PROVIDER,
+    ).toBe('brevo');
+  });
 });
 
 describe('.env.example', () => {

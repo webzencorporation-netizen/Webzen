@@ -93,7 +93,7 @@ Projeto Railway `webzen`, ambiente `production`, todos os serviços a partir do 
 | `web` | `pnpm --filter @botsaas/web run build` / `start` (porta 3000; `API_INTERNAL_URL` = rede interna da `api`) | https://web-production-0bc388.up.railway.app |
 | `Redis` | template oficial | só rede interna |
 
-- Banco no Neon, arquivos no R2, e-mail pela Brevo (`smtp-relay.brevo.com:587`; a Brevo exige desligar o bloqueio de IPs desconhecidos, porque os IPs da Railway mudam), cobrança Stripe em modo produção com webhook `…/webhooks/stripe`.
+- Banco no Neon, arquivos no R2, e-mail pela **API HTTP da Brevo** (`EMAIL_PROVIDER=brevo` + `BREVO_API_KEY`): a Railway bloqueia SMTP de saída fora do plano Pro (o primeiro envio por SMTP falhou com "Connection timeout"). Na Brevo, o bloqueio de IPs desconhecidos precisa ficar desligado, porque os IPs da Railway mudam, e o remetente de `EMAIL_FROM` precisa estar verificado, cobrança Stripe em modo produção com webhook `…/webhooks/stripe`.
 - Configurações não secretas ficam como variáveis compartilhadas do ambiente e cada serviço as referencia (`${{shared.NOME}}`); a Railway não injeta as compartilhadas sozinha. `PORT` é definido por serviço porque o healthcheck da Railway usa essa variável.
 - Segredos saem do `.env.production` local direto para a API GraphQL da Railway com `RAILWAY_TOKEN` (também no `.env.production`), sem passar por chat ou logs.
 - Migrações continuam manuais e só depois do merge (`pnpm db:migrate:deploy` contra o Neon).

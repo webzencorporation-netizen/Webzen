@@ -7,7 +7,7 @@ export interface EmailMessage {
 }
 
 export interface EmailSender {
-  readonly name: 'smtp' | 'log' | 'memory';
+  readonly name: 'smtp' | 'brevo' | 'log' | 'memory';
   /** Envia o e-mail; lança erro em falha (o job decide se repete). */
   send(message: EmailMessage): Promise<{ messageId: string | null }>;
 }

@@ -4,6 +4,7 @@ import {
   DisabledSpeechToText,
   LocalObjectStorage,
   LogEmailSender,
+  BrevoEmailSender,
   SmtpEmailSender,
   type EmailSender,
   MockSpeechToText,
@@ -93,7 +94,12 @@ export function createProviders(env: Env, logger: Logger): Providers {
           password: env.SMTP_PASSWORD,
           from: env.EMAIL_FROM,
         })
-      : new LogEmailSender(env.EMAIL_LOG_DIR);
+      : env.EMAIL_PROVIDER === 'brevo'
+        ? new BrevoEmailSender({
+            apiKey: env.BREVO_API_KEY ?? missing('EMAIL_PROVIDER=brevo', 'BREVO_API_KEY'),
+            from: env.EMAIL_FROM,
+          })
+        : new LogEmailSender(env.EMAIL_LOG_DIR);
 
   let billing: BillingProvider | null = null;
   if (env.BILLING_PROVIDER === 'stripe') {
