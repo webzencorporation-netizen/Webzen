@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { Logo } from '@/components/brand/logo';
+import { PlanLimitDialog } from '@/features/billing/plan-limit-dialog';
 import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/misc';
@@ -162,6 +163,7 @@ export function CompanyShell({ children }: { children: ReactNode }) {
           </header>
           <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">{children}</main>
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+          <PlanLimitDialog />
         </div>
       </div>
     </div>

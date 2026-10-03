@@ -227,8 +227,8 @@ Etapas concluídas (commits no PR): auditoria; catálogo de planos/entitlements;
 
 Próximos passos, nesta ordem:
 
-1. Retenção por plano (histórico limitado no plano menor) usando `runRetention` em `apps/api/src/modules/maintenance/service.ts` — avaliar antes se vale (hoje a retenção é escolha da empresa).
-2. Testes E2E restantes dos fluxos manuais: convite → aceite → permissões (Fluxo 4); limite do plano → tela de upgrade (Fluxo 5); isolamento entre empresas na UI (Fluxo 6); usuário comum → `/platform` negado (Fluxo 8, já coberto em `critical-flows`).
+1. ~~Retenção por plano~~ — avaliada e descartada (D-044: apagaria dados de clientes).
+2. ~~Testes E2E dos fluxos 4, 5 e 6~~ — concluído em `e2e/team-plan-isolation.spec.ts`, com o aviso de upgrade e as telas de "não encontrado" (D-044).
 3. Auditoria final completa (lint, typecheck, testes, build, smoke, E2E) e o resumo final em 20 itens pedido pelo responsável.
 4. Pendências fora do alcance local: homologar Stripe (modo teste) e SMTP reais; revisão jurídica dos textos; 2FA; multi-bot por empresa (decisão de escopo em AUDIT_2026-10).
 

@@ -1,33 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
-import { E2E_MAIL_DIR } from './fixtures';
-
-/** Último link enviado por e-mail para o endereço (a API grava cada e-mail como .html). */
-async function lastEmailLink(to: string, pathname: string): Promise<string> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const files = (await readdir(E2E_MAIL_DIR).catch(() => [] as string[])).sort().reverse();
-    for (const file of files) {
-      const html = await readFile(path.join(E2E_MAIL_DIR, file), 'utf8');
-      if (!html.startsWith(`<!-- Para: ${to} `)) continue;
-      const match = html.match(new RegExp(`https?://[^"<\\s]+${pathname}\\?token=[A-Za-z0-9_%-]+`));
-      if (match) return match[0];
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Nenhum e-mail com ${pathname} para ${to}`);
-}
-
-async function signup(page: Page, email: string, password: string) {
-  await page.goto('/cadastro?plano=starter&periodo=anual');
-  await page.getByLabel('Seu nome').fill('Rafa E2E');
-  await page.getByLabel('E-mail de trabalho').fill(email);
-  await page.getByLabel('Senha', { exact: true }).fill(password);
-  await page.getByLabel('Nome da empresa').fill('Ateliê E2E');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Criar conta' }).click();
-  await expect(page.getByRole('heading', { name: 'Confira seu e-mail' })).toBeVisible();
-}
+import { expect, test } from '@playwright/test';
+import { lastEmailLink, signup } from './helpers';
 
 test.describe('site público e contas', () => {
   test('landing apresenta o WebZen e os preços mensal e anual', async ({ page }) => {

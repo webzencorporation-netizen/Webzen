@@ -97,6 +97,17 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
   }
 
   const data = conversation.data;
+  if (conversation.isError && !data) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm font-semibold text-slate-900">Conversa não encontrada</p>
+        <p className="max-w-sm text-sm text-muted">Ela pode ter sido excluída ou não pertencer a esta empresa.</p>
+        <Button asChild variant="secondary" size="sm">
+          <Link href="/app/conversations"><ArrowLeft className="h-4 w-4" /> Voltar para conversas</Link>
+        </Button>
+      </div>
+    );
+  }
   if (conversation.isLoading || !data) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -193,7 +204,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 scrollbar-thin sm:px-6">
+      <div role="log" aria-label="Mensagens da conversa" className="min-h-0 flex-1 overflow-y-auto px-3 py-4 scrollbar-thin sm:px-6">
         {messages.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-12 w-2/3" />

@@ -417,3 +417,16 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 **Decisão:** `GET /api/platform/metrics/saas` e `/metrics/economics` (permissão `platform:usage:read`) e a tela **Indicadores**. MRR = soma dos preços de tabela das assinaturas pagantes (`ACTIVE`/`PAST_DUE`; anual ÷ 12), ARR = MRR × 12, receita efetiva = faturas pagas no mês, churn = cancelamentos do mês ÷ pagantes no início do mês, receita e clientes por plano, usuários ativos em 30 dias, bots no ar (IA ligada e WhatsApp conectado), mensagens e custo de IA do mês. Receita × custo de IA por empresa nos últimos 30 dias, em moedas separadas (R$ e US$), sem câmbio inventado. Nada é estimado fora do que está no banco.
 
 **Limites:** MRR não desconta cupons (a receita efetiva sim). Sem série histórica (cada consulta é o retrato do momento).
+
+## D-044 — Retenção de dados não varia por plano; aviso de upgrade e telas de "não encontrado"
+
+**Contexto:** a retomada previa "retenção por plano" (histórico menor no Starter) usando `runRetention`.
+
+**Decisão:** **não implementar.** Retenção por plano significaria apagar conversas de clientes que mudam para um plano menor ou que nunca escolheram isso, contrariando a regra "não deletar dados". O prazo de retenção continua sendo escolha da própria empresa (`messageRetentionDays`, padrão sem expurgo), como exige a LGPD (finalidade definida pelo controlador). A diferença entre planos fica nos limites de uso e recursos, que não destroem dados.
+
+**Também nesta etapa:**
+
+- **Aviso de upgrade:** quando uma ação (não uma leitura) é recusada com `LIMIT_REACHED` ou `FEATURE_DISABLED`, o cliente HTTP do painel dispara o evento `webzen:plan-limit` e o diálogo "Seu plano chegou ao limite" mostra a mensagem do backend. Quem tem `billing:manage` vai para Assinatura; os demais são orientados a falar com o proprietário. Leituras não abrem o aviso, para uma tela não abrir diálogo sozinha.
+- **Contato ou conversa inexistente / de outra empresa:** a página mostrava carregamento infinito; agora mostra "não encontrado" com link de volta. A API já respondia 404 (sem revelar existência).
+- A lista de mensagens da conversa virou `role="log"` (leitor de tela anuncia mensagens novas), o que também deixou o E2E estável.
+
