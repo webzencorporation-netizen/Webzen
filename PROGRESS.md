@@ -219,6 +219,20 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
 
 - **Indicadores do negócio na plataforma (2026-10-01, D-043)**: MRR/ARR, recebido no mês, assinantes, cancelamentos e churn, empresas, usuários ativos, bots no ar, mensagens e custo de IA, receita por plano e receita × custo de IA por empresa. Fluxo 7 verificado no navegador. 2 testes novos com valores conferidos à mão.
 
+- **Novidades, documentação e auditoria final parcial (2026-10-01)**: página `/novidades` (changelog em `apps/web/src/lib/changelog.ts`), paleta Ctrl+K, README do WebZen, DEPLOYMENT com config de SMTP/Stripe, passos pós-merge e tabela de backups, ARCHITECTURE com `/api/v1`, `/webhooks/stripe` e jobs novos; teste que obriga o `.env.example` a documentar toda variável. Varreduras: sem TODO/FIXME, `console.log`, `any`, `@ts-ignore`/`eslint-disable` no código-fonte; `check:secrets` e `pnpm audit` limpos; nenhum link interno quebrado.
+
+## Ponto de retomada (evolução SaaS WebZen, branch `feat/webzen-saas`, PR #6)
+
+Etapas concluídas (commits no PR): auditoria; catálogo de planos/entitlements; contas self-service e e-mail; cobrança Stripe; interface WebZen e site público; API v1/chaves/webhooks; suporte; indicadores; Ctrl+K; novidades e docs.
+
+Próximos passos, nesta ordem:
+1. Retenção por plano (histórico limitado no plano menor) usando `runRetention` em `apps/api/src/modules/maintenance/service.ts` — avaliar antes se vale (hoje a retenção é escolha da empresa).
+2. Testes E2E restantes dos fluxos manuais: convite → aceite → permissões (Fluxo 4); limite do plano → tela de upgrade (Fluxo 5); isolamento entre empresas na UI (Fluxo 6); usuário comum → `/platform` negado (Fluxo 8, já coberto em `critical-flows`).
+3. Auditoria final completa (lint, typecheck, testes, build, smoke, E2E) e o resumo final em 20 itens pedido pelo responsável.
+4. Pendências fora do alcance local: homologar Stripe (modo teste) e SMTP reais; revisão jurídica dos textos; 2FA; multi-bot por empresa (decisão de escopo em AUDIT_2026-10).
+
+Verificação local: `pnpm services:local` (Postgres/Redis), depois lint/typecheck/test/build/test:build e o E2E com as portas 4200/3200 descritas em VALIDATION.
+
 ## Em andamento
 
 - Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.

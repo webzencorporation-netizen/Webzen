@@ -254,3 +254,30 @@ describe('configuração de ambiente', () => {
     ).toThrow(/SMTP_PASSWORD/);
   });
 });
+
+describe('.env.example', () => {
+  it('documenta toda variável aceita pela aplicação (sem valores reais)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const path = await import('node:path');
+    const example = await readFile(
+      path.resolve(import.meta.dirname, '../../../.env.example'),
+      'utf8',
+    );
+    const documented = new Set(
+      [...example.matchAll(/^#?\s*([A-Z][A-Z0-9_]+)=/gm)].map((match) => match[1]),
+    );
+    const missing = Object.keys(envSchema.shape).filter((key) => !documented.has(key));
+    expect(missing).toEqual([]);
+    // Segredos nunca têm valor no exemplo.
+    for (const secret of [
+      'ANTHROPIC_API_KEY',
+      'META_MODEL_API_KEY',
+      'STRIPE_SECRET_KEY',
+      'STRIPE_WEBHOOK_SECRET',
+      'SMTP_PASSWORD',
+      'ENCRYPTION_KEY',
+    ]) {
+      expect(example).toMatch(new RegExp(`^${secret}=\\s*$`, 'm'));
+    }
+  });
+});

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Check, ChevronDown, CreditCard, KeyRound, LogOut, MessageSquareHeart, ShieldCheck, UserCog } from 'lucide-react';
+import { Building2, Check, ChevronDown, CreditCard, KeyRound, LogOut, MessageSquareHeart, ShieldCheck, Sparkles, UserCog } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
@@ -84,6 +84,11 @@ export function UserMenu({ me }: { me: Me }) {
             ) : null}
             <DropdownMenu.Item className={itemClass} onSelect={() => setPasswordOpen(true)}>
               <KeyRound className="h-4 w-4 text-slate-400" /> Alterar senha
+            </DropdownMenu.Item>
+            <DropdownMenu.Item asChild className={itemClass}>
+              <Link href="/novidades" target="_blank">
+                <Sparkles className="h-4 w-4 text-slate-400" /> Novidades
+              </Link>
             </DropdownMenu.Item>
             {me.activeCompany ? (
               <DropdownMenu.Item className={itemClass} onSelect={() => setFeedbackOpen(true)}>
