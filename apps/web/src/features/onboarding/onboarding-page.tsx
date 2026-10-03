@@ -162,7 +162,7 @@ export function OnboardingPage() {
         <ol className="space-y-1">
           {steps.map((item, position) => (
             <li key={item.key}>
-              <button onClick={() => setCurrent(item.key)} className={cn('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm', item.key === current ? 'bg-white font-semibold shadow-sm ring-1 ring-border' : 'text-slate-600 hover:bg-white/60')}>
+              <button onClick={() => setCurrent(item.key)} className={cn('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm', item.key === current ? 'bg-surface font-semibold shadow-sm ring-1 ring-border' : 'text-slate-600 hover:bg-white/60')}>
                 <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs', item.done ? 'bg-brand-600 text-white' : item.skipped ? 'bg-slate-300 text-white' : 'bg-slate-200 text-slate-600')}>
                   {item.done ? <Check className="h-3.5 w-3.5" /> : position + 1}
                 </span>
@@ -175,7 +175,7 @@ export function OnboardingPage() {
         <Card>
           <CardContent className="space-y-6">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Etapa {index + 1} de {steps.length}</p>
+              <p className="text-xs font-semibold text-brand-700">Etapa {index + 1} de {steps.length}</p>
               <h2 className="mt-1 text-lg font-semibold">{step.title}</h2>
               <p className="text-sm text-muted">{DESCRIPTIONS[step.key]}</p>
             </div>

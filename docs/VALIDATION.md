@@ -36,7 +36,7 @@ pnpm --filter @botsaas/web exec playwright install chromium
 pnpm test:e2e
 ```
 
-O Playwright sobe API, worker BullMQ e painel Next, usando PostgreSQL e Redis reais e providers externos simulados. O primeiro processo prepara o banco e o seed Clínica Demo antes de iniciar a API; sua disponibilidade libera worker e painel. O hook `globalSetup` não é usado porque executaria após os servidores na versão adotada. Use somente recursos dedicados a testes.
+O Playwright sobe API, worker BullMQ e painel Next, usando PostgreSQL e Redis reais e providers externos simulados. Os e-mails da API do E2E viram arquivos em `.local/e2e-mail` (`EMAIL_PROVIDER=log`), lidos pelos cenários de cadastro, confirmação e recuperação de senha (`e2e/saas-flows.spec.ts`) e de convite (`e2e/team-plan-isolation.spec.ts`, que também cobre o aviso de upgrade no limite do plano e o isolamento entre empresas pela URL). São 15 cenários (14 desktop + 1 mobile). O primeiro processo prepara o banco e o seed Clínica Demo antes de iniciar a API; sua disponibilidade libera worker e painel. O hook `globalSetup` não é usado porque executaria após os servidores na versão adotada. Use somente recursos dedicados a testes.
 
 O destino é validado antes de conectar: protocolos PostgreSQL, sem query/fragmento e nome ASCII `botsaas_(segmentos_)e2e(_segmentos)` de até 63 caracteres. Os exemplos abaixo e `botsaas_ci_e2e` são aceitos. O reset não usa `FORCE`: banco em uso faz o setup falhar, sem encerrar conexões existentes. Configurações SSL via query não são aceitas por esse runner.
 

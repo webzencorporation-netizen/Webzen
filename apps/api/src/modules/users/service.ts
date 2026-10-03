@@ -17,5 +17,9 @@ export function createCompanyUser(input: {
   passwordHash: string;
   mustChangePassword: boolean;
 }) {
-  return systemDb.user.create({ data: input, select: { id: true, email: true, name: true } });
+  // Criado por quem administra a empresa/plataforma: o e-mail é confiável desde o início.
+  return systemDb.user.create({
+    data: { ...input, emailVerifiedAt: new Date() },
+    select: { id: true, email: true, name: true },
+  });
 }

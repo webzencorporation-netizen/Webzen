@@ -16,6 +16,7 @@ import { useCan } from '@/lib/session';
 import { BusinessHoursEditor } from './business-hours-editor';
 import { CompanyProfileForm } from './company-profile-form';
 import { CrmSettings } from './crm-settings';
+import { SettingsNav } from './settings-nav';
 import type { CompanyProfile } from './types';
 
 interface AuditEntry {
@@ -126,7 +127,8 @@ export function SettingsPage() {
   ];
   return (
     <PageContainer className="max-w-5xl">
-      <PageHeader title="Configurações" description="Dados da empresa, funcionamento e políticas." />
+      <PageHeader title="Configurações" description="Dados da empresa, assinatura e segurança." />
+      <SettingsNav />
       <Tabs value={tab} onValueChange={setTab} items={tabs} className="mb-6" />
       {!profile.data ? <Skeleton className="h-64" /> : (
         <>

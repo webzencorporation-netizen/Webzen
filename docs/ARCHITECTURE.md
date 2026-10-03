@@ -36,11 +36,14 @@ O [container](../apps/api/src/container.ts) reúne `Env`, logger, `JobQueue`, `S
 
 | Prefixo na API                      | Uso                                                                                                                                                       |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/auth`                         | Login, logout, sessão atual, troca de empresa e senha.                                                                                                    |
+| `/api/public`                       | Sem sessão: planos à venda, status do sistema e OpenAPI da API v1.                                                                                        |
+| `/api/auth`                         | Login, logout, sessão atual, troca de empresa e senha; cadastro, confirmação de e-mail, recuperação de senha, aceite de convite e sessões ativas.         |
+| `/api/v1`                           | API pública por chave (`Bearer wz_...`), versionada; contatos, conversas e envio de mensagens (D-041).                                                    |
 | `/api/app`                          | Painel empresarial: contatos, conversas, CRM, catálogo, agenda, agente, conhecimento, automações, equipe, integrações, métricas, auditoria e exportações. |
 | `/api/platform`                     | Empresas, planos, preços, limites, administradores, saúde e modo suporte.                                                                                 |
 | `/api/integrations/google/callback` | Retorno OAuth autenticado do Google.                                                                                                                      |
 | `/webhooks/whatsapp`                | Verificação GET e eventos POST com assinatura.                                                                                                            |
+| `/webhooks/stripe`                  | Eventos de cobrança assinados; gravados de forma idempotente e processados pela fila (D-039).                                                             |
 | `/health`, `/health/ready`          | Liveness do HTTP; readiness consulta PostgreSQL e Redis.                                                                                                  |
 
 O [registro empresarial](../apps/api/src/modules/company/routes.ts) lista os subprefixos. Rotas usam Zod e guards; serviços recebem [CompanyScope](../apps/api/src/context.ts), com client de banco, ator, permissões e infraestrutura. A empresa do painel vem da sessão; veja [MULTITENANCY.md](MULTITENANCY.md).
@@ -58,7 +61,7 @@ A busca de conhecimento usa [SQL parametrizado com filtro explícito de empresa]
 
 ## Filas, concorrência e recuperação
 
-O [catálogo tipado](../apps/api/src/queues/types.ts) define dez jobs: `webhook.process`, `agent.reply`, `message.send`, `media.process`, `conversation.summarize`, `domain-event.dispatch`, `knowledge.process-document`, `calendar.sync`, `appointments.reminders` e `maintenance.retention`. Payloads carregam IDs e parâmetros de controle, e os processadores reconsultam o banco.
+O [catálogo tipado](../apps/api/src/queues/types.ts) define os jobs: `webhook.process`, `agent.reply`, `message.send`, `media.process`, `conversation.summarize`, `domain-event.dispatch`, `knowledge.process-document`, `calendar.sync`, `appointments.reminders`, `maintenance.retention`, `agent.recover-stalled`, `usage.alerts` (avisos 70/90/100%), `email.send`, `billing.event` (webhooks da Stripe) e `webhook.deliver` (webhooks de saída). Payloads carregam IDs e parâmetros de controle, e os processadores reconsultam o banco.
 
 Cada job tem fila própria; o nome troca pontos por hífens, sob prefixo `botsaas`. [BullJobQueue](../apps/api/src/queues/bullmq.ts) aplica tentativas limitadas e backoff exponencial; mantém jobs concluídos por até 24h/1.000 registros e falhos por até sete dias/5.000 registros. O worker registra falhas finais em `ErrorLog`. Concorrência por fila está em [processors.ts](../apps/api/src/jobs/processors.ts).
 

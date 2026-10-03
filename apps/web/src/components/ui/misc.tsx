@@ -59,7 +59,7 @@ export function Tabs({ value, onValueChange, items, className }: { value: string
           <RadixTabs.Trigger
             key={item.value}
             value={item.value}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm hover:text-slate-900"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition data-[state=active]:bg-surface data-[state=active]:text-slate-900 data-[state=active]:shadow-sm hover:text-slate-900"
           >
             {item.label}
           </RadixTabs.Trigger>
@@ -75,7 +75,7 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       <RadixTooltip.Root>
         <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
         <RadixTooltip.Portal>
-          <RadixTooltip.Content sideOffset={6} className="z-50 max-w-xs rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg">
+          <RadixTooltip.Content sideOffset={6} className="z-50 max-w-xs rounded-md bg-ink px-2.5 py-1.5 text-xs text-white shadow-lg">
             {content}
           </RadixTooltip.Content>
         </RadixTooltip.Portal>
@@ -100,7 +100,7 @@ export function StatCard({ label, value, hint, icon: Icon, loading }: { label: s
   return (
     <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+        <p className="text-xs font-medium text-muted">{label}</p>
         {Icon ? <Icon className="h-4 w-4 text-slate-400" /> : null}
       </div>
       {loading ? <Skeleton className="mt-3 h-7 w-20" /> : <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{value}</p>}
@@ -118,7 +118,7 @@ export function Table({ children, className }: { children: ReactNode; className?
 }
 
 export function Th({ children, className }: { children?: ReactNode; className?: string }) {
-  return <th className={cn('border-b border-border bg-surface-muted px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted', className)}>{children}</th>;
+  return <th className={cn('border-b border-border bg-surface-muted px-4 py-2.5 text-left text-xs font-semibold text-muted', className)}>{children}</th>;
 }
 
 export function Td({ children, className, colSpan }: { children?: ReactNode; className?: string; colSpan?: number }) {

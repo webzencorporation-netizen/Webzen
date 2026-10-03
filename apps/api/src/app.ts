@@ -3,8 +3,13 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
-import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import {
+  jsonSchemaTransform,
+  serializerCompiler,
+  validatorCompiler,
+} from 'fastify-type-provider-zod';
 import type { AppContainer } from './container';
 import { registerAuth } from './plugins/auth';
 import { registerCsrf } from './plugins/csrf';
@@ -13,6 +18,8 @@ import { registerRouteInventory } from './plugins/route-inventory';
 import { authRoutes } from './modules/auth/routes';
 import { companyRoutes } from './modules/company/routes';
 import { platformRoutes } from './modules/platform/routes';
+import { publicRoutes } from './modules/public/routes';
+import { publicApiRoutes } from './modules/public-api/routes';
 import { oauthRoutes } from './modules/oauth/routes';
 import { webhookRoutes } from './modules/webhooks/routes';
 
@@ -80,6 +87,28 @@ export async function buildApp(container: AppContainer): Promise<FastifyInstance
     limits: { fileSize: env.UPLOAD_MAX_BYTES, files: 1, fields: 10 },
   });
 
+  // OpenAPI só da API pública v1 (as rotas internas do painel ficam fora do documento).
+  await app.register(swagger, {
+    openapi: {
+      openapi: '3.1.0',
+      info: {
+        title: 'WebZen API',
+        version: '1.0.0',
+        description:
+          'API pública do WebZen. Autentique com `Authorization: Bearer wz_...` (Configurações → API e webhooks). Limite: 120 requisições por minuto por chave. Use `Idempotency-Key` nos POST para retries seguros.',
+      },
+      servers: [{ url: env.API_PUBLIC_URL }],
+      components: {
+        securitySchemes: { apiKey: { type: 'http', scheme: 'bearer', bearerFormat: 'wz_...' } },
+      },
+      security: [{ apiKey: [] }],
+    },
+    transform: (document) =>
+      document.url.startsWith('/api/v1/')
+        ? jsonSchemaTransform(document)
+        : { schema: { ...document.schema, hide: true }, url: document.url },
+  });
+
   registerErrorHandling(app);
   registerAuth(app);
   registerCsrf(app, [env.APP_URL, env.API_PUBLIC_URL]);
@@ -96,6 +125,8 @@ export async function buildApp(container: AppContainer): Promise<FastifyInstance
     }
   });
 
+  await app.register(publicRoutes, { prefix: '/api/public' });
+  await app.register(publicApiRoutes, { prefix: '/api/v1' });
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(platformRoutes, { prefix: '/api/platform' });
   await app.register(companyRoutes, { prefix: '/api/app' });

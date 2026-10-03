@@ -30,4 +30,12 @@ export const TEST_ENV: Record<string, string> = {
   LOGIN_RATE_LIMIT_PER_MINUTE: '1000',
   LOGIN_ACCOUNT_MAX_ATTEMPTS: '1000',
   AI_TEST_RATE_LIMIT_PER_MINUTE: '1000',
+  ACCOUNT_EMAIL_RATE_LIMIT_PER_HOUR: '1000',
+  SIGNUP_ENABLED: 'true',
+  SESSION_IDLE_TIMEOUT_HOURS: '72',
+  // E-mails ficam no MemoryEmailSender do harness; nada de SMTP real nos testes.
+  EMAIL_PROVIDER: 'log',
+  EMAIL_LOG_DIR: path.resolve(import.meta.dirname, '../../../../.local/test-mail'),
+  BILLING_PROVIDER: 'none',
+  BILLING_TRIAL_DAYS: '0',
 };

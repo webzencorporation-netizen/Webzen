@@ -15,6 +15,9 @@ import { exportRoutes } from './privacy/routes';
 import { searchRoutes } from './search/routes';
 import { settingsRoutes } from './settings/routes';
 import { teamRoutes } from './team/routes';
+import { billingRoutes } from './billing/routes';
+import { developerRoutes } from './developer/routes';
+import { supportRoutes } from './support/routes';
 
 /**
  * Painel da EMPRESA (/api/app/*). A empresa vem da sessão (guard `company`);
@@ -23,6 +26,9 @@ import { teamRoutes } from './team/routes';
 export const companyRoutes: FastifyPluginAsync = async (app) => {
   await app.register(settingsRoutes, { prefix: '/company' });
   await app.register(teamRoutes, { prefix: '/team' });
+  await app.register(billingRoutes, { prefix: '/billing' });
+  await app.register(developerRoutes, { prefix: '/developer' });
+  await app.register(supportRoutes, { prefix: '/support' });
   await app.register(contactRoutes, { prefix: '/contacts' });
   await app.register(conversationRoutes, { prefix: '/conversations' });
   await app.register(crmRoutes, { prefix: '/crm' });

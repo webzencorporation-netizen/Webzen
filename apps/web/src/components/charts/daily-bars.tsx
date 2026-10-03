@@ -1,3 +1,4 @@
+import { usageThresholdReached } from '@botsaas/shared';
 import { formatNumber } from '@/lib/format';
 
 export interface DailyPoint {
@@ -16,7 +17,7 @@ export function DailyBars({ data }: { data: DailyPoint[] }) {
           <div key={point.day} className="group relative flex h-full flex-1 items-end justify-center gap-[2px]">
             <div className="w-1/2 rounded-t bg-slate-300 transition group-hover:bg-slate-400" style={{ height: `${(point.inbound / max) * 100}%` }} />
             <div className="w-1/2 rounded-t bg-brand-500 transition group-hover:bg-brand-600" style={{ height: `${(point.outbound / max) * 100}%` }} />
-            <div className="pointer-events-none absolute -top-12 z-10 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[11px] text-white group-hover:block">
+            <div className="pointer-events-none absolute -top-12 z-10 hidden whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] text-white group-hover:block">
               {point.day.slice(8, 10)}/{point.day.slice(5, 7)} · {formatNumber(point.inbound)} recebidas · {formatNumber(point.outbound)} enviadas
             </div>
           </div>
@@ -34,20 +35,30 @@ export function DailyBars({ data }: { data: DailyPoint[] }) {
   );
 }
 
-export function UsageMeter({ label, current, limit, state }: { label: string; current: number; limit: number | null; state: string }) {
-  const percent = limit ? Math.min(100, (current / limit) * 100) : 0;
-  const color = state === 'LIMIT_REACHED' ? 'bg-red-500' : state === 'WARNING' ? 'bg-amber-500' : 'bg-brand-500';
+/** Consumo de uma métrica do plano. Cores pelos limiares de aviso (70/90/100%). */
+export function UsageMeter({ label, current, limit }: { label: string; current: number; limit: number | null; state?: string }) {
+  const value = Math.round(current * 100) / 100;
+  const threshold = usageThresholdReached(value, limit);
+  const percent = limit ? Math.min(100, (value / limit) * 100) : 0;
+  const color = threshold >= 100 ? 'bg-red-500' : threshold >= 90 ? 'bg-orange-500' : threshold >= 70 ? 'bg-hour' : 'bg-brand-500';
   return (
     <div>
-      <div className="flex justify-between text-xs">
+      <div className="flex justify-between gap-3 text-xs">
         <span className="text-slate-600">{label}</span>
-        <span className="tabular-nums text-muted">
-          {formatNumber(Math.round(current * 100) / 100)} {limit !== null ? `/ ${formatNumber(limit)}` : '· ilimitado'}
-        </span>
+        <span className="tabular-nums text-muted">{limit !== null ? `${formatNumber(value)} de ${formatNumber(limit)}` : `${formatNumber(value)} · ilimitado`}</span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${limit ? percent : 4}%` }} />
+      <div
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={limit ?? undefined}
+        aria-valuenow={value}
+        aria-valuetext={limit !== null ? `Você utilizou ${formatNumber(value)} de ${formatNumber(limit)}` : `${formatNumber(value)}, sem limite`}
+      >
+        <div className={`h-full rounded-full transition-[width] ${color}`} style={{ width: `${limit ? Math.max(percent, value > 0 ? 2 : 0) : 4}%` }} />
       </div>
+      {threshold >= 100 ? <p className="mt-1 text-xs text-red-700">Limite do plano atingido.</p> : null}
     </div>
   );
 }

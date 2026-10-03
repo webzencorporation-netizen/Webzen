@@ -36,11 +36,22 @@ beforeEach(() => harness.reset());
 const PUBLIC_ROUTES = new Set([
   'POST /api/auth/login',
   'POST /api/auth/logout',
+  'POST /api/auth/signup',
+  'POST /api/auth/verify-email',
+  'POST /api/auth/resend-verification',
+  'POST /api/auth/forgot-password',
+  'POST /api/auth/reset-password',
+  'POST /api/auth/invitations/preview',
+  'POST /api/auth/invitations/accept',
+  'GET /api/public/plans',
+  'GET /api/public/status',
+  'GET /api/public/openapi.json',
   'GET /api/integrations/google/callback',
   'GET /health',
   'GET /health/ready',
   'GET /webhooks/whatsapp',
   'POST /webhooks/whatsapp',
+  'POST /webhooks/stripe',
 ]);
 /** Escritas sem permissão específica: só marcam notificações do PRÓPRIO usuário como lidas. */
 const USER_SCOPED_WRITES = new Set([

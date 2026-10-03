@@ -1,17 +1,8 @@
 import type { FeatureFlagKey } from '@botsaas/database';
-import { FEATURE_FLAGS, FeatureDisabledError } from '@botsaas/shared';
+import { FEATURE_FLAGS, FEATURE_LABELS, FeatureDisabledError } from '@botsaas/shared';
 import type { FastifyRequest } from 'fastify';
 import type { CompanyDataScope, CompanyScope } from '../../context';
 import { requireTenant } from '../../plugins/guards';
-
-const FEATURE_LABELS: Record<FeatureFlagKey, string> = {
-  AI_AGENT: 'Atendente virtual',
-  CRM: 'CRM',
-  CALENDAR: 'Agenda',
-  AUTOMATIONS: 'Automações',
-  ADVANCED_ANALYTICS: 'Relatórios avançados',
-  KNOWLEDGE_UPLOADS: 'Upload de documentos',
-};
 
 /** Recursos efetivos: recursos do plano + sobrescritas da empresa. Sem assinatura = recursos básicos. */
 export async function getEnabledFeatures(

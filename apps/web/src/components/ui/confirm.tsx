@@ -10,6 +10,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = 'Confirmar',
+  cancelLabel = 'Voltar',
   tone = 'danger',
   loading,
   onConfirm,
@@ -19,6 +20,8 @@ export function ConfirmDialog({
   title: string;
   description: ReactNode;
   confirmLabel?: string;
+  /** Rótulo do botão que fecha sem agir (evite "Cancelar" ao lado de "Cancelar assinatura"). */
+  cancelLabel?: string;
   tone?: 'danger' | 'primary';
   loading?: boolean;
   onConfirm: () => void;
@@ -32,7 +35,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {cancelLabel}
           </Button>
           <Button variant={tone} loading={loading} onClick={onConfirm}>
             {confirmLabel}

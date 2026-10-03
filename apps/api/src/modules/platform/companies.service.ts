@@ -4,8 +4,10 @@ import {
   decimalToNumber,
   hashPassword,
   systemDb,
+  type BillingInterval,
   type CompanyStatus,
   type FeatureFlagKey,
+  type SubscriptionStatus,
   type Prisma,
   type UsageMetric,
 } from '@botsaas/database';
@@ -48,6 +50,12 @@ export interface CreateCompanyInput {
   email?: string | null;
   planKey?: string | null;
   owner: { email: string; name: string; password?: string | null };
+  /** Cadastro público: o dono confirma o e-mail depois. Padrão: já confirmado (criado pela plataforma). */
+  ownerEmailVerified?: boolean;
+  /** Padrão ACTIVE (gerida pela plataforma). O cadastro público começa em INCOMPLETE. */
+  subscriptionStatus?: SubscriptionStatus;
+  billingInterval?: BillingInterval;
+  signupReferralCode?: string | null;
 }
 
 /**
@@ -64,7 +72,10 @@ export async function createCompany(
 
   const plan = input.planKey
     ? await systemDb.plan.findUnique({ where: { key: input.planKey } })
-    : await systemDb.plan.findFirst({ where: { isActive: true }, orderBy: { priceCents: 'asc' } });
+    : await systemDb.plan.findFirst({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
+      });
   if (input.planKey && !plan) throw new NotFoundError('Plano não encontrado.');
 
   const company = await systemDb.$transaction(async (tx) => {
@@ -77,6 +88,7 @@ export async function createCompany(
         phone: input.phone ?? null,
         email: input.email ?? null,
         status: 'ONBOARDING',
+        signupReferralCode: input.signupReferralCode ?? null,
       },
     });
 
@@ -90,6 +102,7 @@ export async function createCompany(
           name: input.owner.name.trim(),
           passwordHash: await hashPassword(password),
           mustChangePassword: input.owner.password ? false : true,
+          emailVerifiedAt: input.ownerEmailVerified === false ? null : new Date(),
         },
       });
     }
@@ -106,7 +119,8 @@ export async function createCompany(
         data: {
           companyId: created.id,
           planId: plan.id,
-          status: 'ACTIVE',
+          status: input.subscriptionStatus ?? 'ACTIVE',
+          interval: input.billingInterval ?? 'MONTHLY',
           currentPeriodStart: new Date(),
         },
       });

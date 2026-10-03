@@ -88,6 +88,21 @@ async function main() {
     },
   );
 
+  // Avisos de consumo (70/90/100% do plano): ver modules/usage/alerts.ts.
+  const usageAlerts = new Queue(queueNameFor('usage.alerts'), {
+    connection,
+    prefix: QUEUE_PREFIX,
+  });
+  await usageAlerts.upsertJobScheduler(
+    'usage-alerts',
+    { every: 30 * 60_000 },
+    {
+      name: 'usage.alerts',
+      data: {},
+      opts: { attempts: JOB_RETRY_POLICY['usage.alerts'].attempts },
+    },
+  );
+
   const beat = () => void container.redis?.set(WORKER_HEARTBEAT_KEY, String(Date.now()), 'EX', 120);
   beat();
   const heartbeat = setInterval(beat, 15_000);
@@ -101,6 +116,7 @@ async function main() {
       reminders.close(),
       retention.close(),
       recovery.close(),
+      usageAlerts.close(),
       container.queue.close(),
     ]);
     container.redis?.disconnect();

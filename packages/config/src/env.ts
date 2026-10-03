@@ -126,6 +126,34 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalString,
   GOOGLE_REDIRECT_URI: optionalString,
 
+  // Contas e sessões
+  /** Cadastro público (self-service). Desligado = só a plataforma cria empresas. */
+  SIGNUP_ENABLED: booleanString.default(true),
+  /** Sessão expira após este tempo sem uso, mesmo antes de SESSION_TTL_DAYS. */
+  SESSION_IDLE_TIMEOUT_HOURS: z.coerce.number().int().positive().default(72),
+  /** Pedidos de cadastro/recuperação de senha/reenvio por IP a cada hora. */
+  ACCOUNT_EMAIL_RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
+
+  // E-mail
+  /** smtp = envio real; log = grava os e-mails em EMAIL_LOG_DIR (desenvolvimento). */
+  EMAIL_PROVIDER: z.enum(['smtp', 'log']).default('log'),
+  EMAIL_FROM: z.string().min(3).default('WebZen <nao-responda@webzen.local>'),
+  EMAIL_LOG_DIR: z.string().default('./.local/mail'),
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  /** true = TLS direto (porta 465); false = STARTTLS quando o servidor oferece. */
+  SMTP_SECURE: booleanString.default(false),
+  SMTP_USER: optionalString,
+  SMTP_PASSWORD: optionalString,
+
+  // Cobrança
+  /** stripe = cobrança real; mock = simulação local; none = cobrança desligada. */
+  BILLING_PROVIDER: z.enum(['stripe', 'mock', 'none']).default('none'),
+  STRIPE_SECRET_KEY: optionalString,
+  STRIPE_WEBHOOK_SECRET: optionalString,
+  /** Dias de teste grátis na primeira assinatura (0 = sem teste). Um teste por pessoa. */
+  BILLING_TRIAL_DAYS: z.coerce.number().int().min(0).max(60).default(0),
+
   // Seed
   SEED_ADMIN_EMAIL: z.email().default('admin@plataforma.local'),
   SEED_ADMIN_PASSWORD: optionalString,
@@ -172,6 +200,28 @@ export function validateEnvRules(env: Env): string[] {
     if (env.STORAGE_PROVIDER === 'local')
       issues.push('STORAGE_PROVIDER=local não é recomendado em produção; use s3 (S3/R2).');
     if (!env.ENCRYPTION_KEY) issues.push('ENCRYPTION_KEY é obrigatória em produção.');
+    if (env.EMAIL_PROVIDER === 'log')
+      issues.push('EMAIL_PROVIDER=log não é permitido em produção; configure SMTP.');
+    if (env.BILLING_PROVIDER === 'mock')
+      issues.push('BILLING_PROVIDER=mock não é permitido em produção.');
+    if (env.EMAIL_FROM.includes('webzen.local'))
+      issues.push('EMAIL_FROM precisa de um remetente real em produção.');
+  }
+  if (env.EMAIL_PROVIDER === 'smtp' && !env.SMTP_HOST) {
+    issues.push('SMTP_HOST é obrigatória quando EMAIL_PROVIDER=smtp.');
+  }
+  if (env.EMAIL_PROVIDER === 'smtp' && Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
+    issues.push('SMTP_USER e SMTP_PASSWORD devem ser informadas juntas.');
+  }
+  if (env.BILLING_PROVIDER === 'stripe') {
+    if (!env.STRIPE_SECRET_KEY || !/^(sk|rk)_(test|live)_/.test(env.STRIPE_SECRET_KEY))
+      issues.push(
+        'STRIPE_SECRET_KEY (sk_test_... ou sk_live_...) é obrigatória quando BILLING_PROVIDER=stripe.',
+      );
+    if (!env.STRIPE_WEBHOOK_SECRET || !env.STRIPE_WEBHOOK_SECRET.startsWith('whsec_'))
+      issues.push(
+        'STRIPE_WEBHOOK_SECRET (whsec_...) é obrigatória quando BILLING_PROVIDER=stripe.',
+      );
   }
 
   if (env.ENCRYPTION_KEY && Buffer.from(env.ENCRYPTION_KEY, 'base64').length !== 32) {

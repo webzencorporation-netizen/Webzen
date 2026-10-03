@@ -41,6 +41,11 @@ export const COMPANY_PERMISSIONS = [
   'audit:read',
   'settings:manage',
   'privacy:manage',
+  'billing:read',
+  'billing:manage',
+  'developer:manage',
+  'support:read',
+  'support:write',
 ] as const;
 
 export type CompanyPermission = (typeof COMPANY_PERMISSIONS)[number];
@@ -78,11 +83,14 @@ const MANAGER: CompanyPermission[] = [
   'automations:read',
   'integrations:read',
   'usage:read',
+  'support:read',
+  'support:write',
 ];
 
 const COMPANY_ADMIN: CompanyPermission[] = COMPANY_PERMISSIONS.filter(
-  // Somente o dono pode excluir dados em massa / gerir privacidade.
-  (permission) => permission !== 'privacy:manage',
+  // Somente o dono pode excluir dados em massa / gerir privacidade e contratar, trocar ou
+  // cancelar o plano (decisões financeiras). O administrador vê a assinatura e as faturas.
+  (permission) => permission !== 'privacy:manage' && permission !== 'billing:manage',
 );
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {
@@ -125,6 +133,7 @@ export const PLATFORM_PERMISSIONS = [
   'platform:admins:manage',
   'platform:pricing:write',
   'platform:health:read',
+  'platform:support:manage',
 ] as const;
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[number];
 
@@ -141,3 +150,11 @@ export function platformRoleHasPermission(
 ): boolean {
   return PLATFORM_ROLE_PERMISSIONS[role].has(permission);
 }
+
+export const COMPANY_ROLE_LABELS: Record<CompanyRole, string> = {
+  COMPANY_OWNER: 'Proprietário',
+  COMPANY_ADMIN: 'Administrador',
+  MANAGER: 'Gerente',
+  ATTENDANT: 'Atendente',
+  VIEWER: 'Somente leitura',
+};

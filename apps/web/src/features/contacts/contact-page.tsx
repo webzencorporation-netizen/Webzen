@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Download, MessagesSquare, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Contact as ContactIcon, Download, MessagesSquare, Save, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm';
 import { Field, Input, Select } from '@/components/ui/form';
-import { PageHeader, Skeleton } from '@/components/ui/misc';
+import { EmptyState, PageHeader, Skeleton } from '@/components/ui/misc';
 import { useToast } from '@/components/ui/toast';
 import { api, errorMessage, type Paginated } from '@/lib/api';
 import { formatDateTime, formatPhone } from '@/lib/format';
@@ -63,6 +63,18 @@ export function ContactPage({ contactId }: { contactId: string }) {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  if (contact.isError) {
+    return (
+      <PageContainer>
+        <EmptyState
+          icon={ContactIcon}
+          title="Contato não encontrado"
+          description="Ele pode ter sido excluído ou não pertencer a esta empresa."
+          action={<Button asChild variant="secondary"><Link href="/app/contacts"><ArrowLeft className="h-4 w-4" /> Voltar para contatos</Link></Button>}
+        />
+      </PageContainer>
+    );
+  }
   if (!contact.data || !form) return <PageContainer><Skeleton className="h-64" /></PageContainer>;
   const editable = can('contacts:write');
   const contactFields = (fields.data ?? []).filter((field) => field.target === 'CONTACT');

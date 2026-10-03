@@ -1,19 +1,52 @@
 @import 'tailwindcss';
 
-/* Tokens de design. Cores semânticas via variáveis para permitir tema escuro no futuro. */
+/*
+ * Design system do WebZen.
+ * Cores: tinta (azul-noite, texto e herói), jade (ação), névoa (bordas), papel (fundo) e
+ * âmbar (só para marcar horário). A escala `slate` do Tailwind É a escala de tinta do WebZen
+ * e é invertida no tema escuro: componentes antigos com `text-slate-*`/`bg-slate-*` ganham
+ * o tema sem reescrita. Superfícies usam tokens semânticos (`bg-surface`, `bg-canvas`).
+ * Contraste conferido (WCAG AA): jade-600 com texto branco 4,95:1; slate-500 sobre branco 5,1:1.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-display-family), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-200: #a7f3d0;
-  --color-brand-300: #6ee7b7;
-  --color-brand-400: #34d399;
-  --color-brand-500: #10b981;
-  --color-brand-600: #059669;
-  --color-brand-700: #047857;
-  --color-brand-800: #065f46;
-  --color-brand-900: #064e3b;
+  /* Jade — ação principal. */
+  --color-brand-50: #ecf8f4;
+  --color-brand-100: #d2f0e6;
+  --color-brand-200: #a6e0cd;
+  --color-brand-300: #6fcaae;
+  --color-brand-400: #36ae8c;
+  --color-brand-500: #149878;
+  --color-brand-600: #0a7f66;
+  --color-brand-700: #0a6a56;
+  --color-brand-800: #0b5747;
+  --color-brand-900: #0b473b;
+  --color-brand-950: #04291f;
+
+  /* Tinta — texto, superfícies neutras e o tema noturno. */
+  --color-slate-50: #f0f4f8;
+  --color-slate-100: #d9e2ec;
+  --color-slate-200: #bccadc;
+  --color-slate-300: #9fb3c8;
+  --color-slate-400: #829ab1;
+  --color-slate-500: #57708a;
+  --color-slate-600: #486581;
+  --color-slate-700: #334e68;
+  --color-slate-800: #243b53;
+  --color-slate-900: #102a43;
+  --color-slate-950: #0a1929;
+
+  /* Tinta fixa: superfícies escuras com texto branco que NÃO invertem no tema escuro. */
+  --color-ink: #102a43;
+  --color-ink-soft: #243b53;
+  --color-ink-deep: #0a1929;
+
+  /* Âmbar — reservado para horários e avisos de tempo. */
+  --color-hour: #f2a93b;
 
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
@@ -22,18 +55,79 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
 
-  --radius-card: 0.875rem;
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --radius-card: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(16 42 67 / 0.05), 0 1px 3px rgb(16 42 67 / 0.06);
+  --shadow-overlay: 0 12px 32px -8px rgb(10 25 41 / 0.25), 0 2px 6px rgb(10 25 41 / 0.08);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-rise-in: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 :root {
-  --canvas: #f6f7f9;
+  --canvas: #f6f8fa;
   --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --border: #e5e7eb;
-  --foreground: #0f172a;
-  --muted: #64748b;
+  --surface-muted: #f1f4f7;
+  --border: #dce6ea;
+  --foreground: #102a43;
+  --muted: #52606d;
   color-scheme: light;
+}
+
+/* Tema escuro: a noite do herói. Escala de tinta invertida e tons claros viram profundos. */
+:root[data-theme='dark'] {
+  --canvas: #0a1929;
+  --surface: #0f2236;
+  --surface-muted: #13283f;
+  --border: #22394f;
+  --foreground: #e6eef5;
+  --muted: #9fb3c8;
+  color-scheme: dark;
+
+  --color-slate-50: #13283f;
+  --color-slate-100: #1a3049;
+  --color-slate-200: #243b53;
+  --color-slate-300: #334e68;
+  --color-slate-400: #57708a;
+  --color-slate-500: #829ab1;
+  --color-slate-600: #9fb3c8;
+  --color-slate-700: #bccadc;
+  --color-slate-800: #d9e2ec;
+  --color-slate-900: #e6eef5;
+  --color-slate-950: #f0f4f8;
+
+  --color-brand-50: #0b2e27;
+  --color-brand-100: #0d3a31;
+  --color-brand-200: #11503f;
+  --color-brand-700: #6fcaae;
+  --color-brand-800: #a6e0cd;
+  --color-brand-900: #d2f0e6;
+
+  --color-red-50: #3a1418;
+  --color-red-100: #4a1a1f;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-amber-50: #33240b;
+  --color-amber-100: #44300e;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-sky-50: #0c2a3d;
+  --color-sky-100: #10364f;
+  --color-sky-700: #7dd3fc;
+  --color-violet-50: #241a3d;
+  --color-violet-700: #c4b5fd;
 }
 
 @layer base {
@@ -51,9 +145,23 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-brand-500;
   }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @utility scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--color-slate-300) transparent;
 }

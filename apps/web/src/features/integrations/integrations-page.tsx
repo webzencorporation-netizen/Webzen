@@ -157,7 +157,7 @@ export function IntegrationsPage() {
               <div className="rounded-lg bg-surface-muted p-4 text-sm">
                 <p className="font-medium">Webhook (configurar no app da Meta)</p>
                 <div className="mt-2 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-white px-2 py-1 font-mono text-xs ring-1 ring-border">{whatsapp.webhookUrl}</code>
+                  <code className="flex-1 truncate rounded bg-surface px-2 py-1 font-mono text-xs ring-1 ring-border">{whatsapp.webhookUrl}</code>
                   <Button size="icon-sm" variant="ghost" onClick={() => { void navigator.clipboard.writeText(whatsapp.webhookUrl); toast.success('URL copiada.'); }} aria-label="Copiar URL"><Copy className="h-4 w-4" /></Button>
                 </div>
                 <p className="mt-2 text-xs text-muted">

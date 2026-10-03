@@ -1,13 +1,14 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Check, ChevronDown, KeyRound, LogOut, ShieldCheck } from 'lucide-react';
+import { Building2, Check, ChevronDown, CreditCard, KeyRound, LogOut, MessageSquareHeart, ShieldCheck, Sparkles, UserCog } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
 import { Avatar } from '@/components/ui/misc';
 import { ChangePasswordDialog } from './change-password-dialog';
+import { FeedbackDialog } from './feedback-dialog';
 import { api } from '@/lib/api';
 import { useLogout, type Me } from '@/lib/session';
 import { roleLabels } from '@/i18n/pt-BR';
@@ -19,6 +20,7 @@ export function UserMenu({ me }: { me: Me }) {
   const router = useRouter();
   const client = useQueryClient();
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const switchCompany = useMutation({
     mutationFn: (companyId: string) => api.post<Me>('/auth/switch-company', { companyId }),
     onSuccess: (updated) => {
@@ -40,7 +42,7 @@ export function UserMenu({ me }: { me: Me }) {
           <ChevronDown className="hidden h-4 w-4 text-slate-400 md:block" />
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
-          <DropdownMenu.Content align="end" sideOffset={8} className="z-50 w-64 rounded-xl border border-border bg-white p-1.5 shadow-xl">
+          <DropdownMenu.Content align="end" sideOffset={8} className="z-50 w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
             <div className="px-2.5 py-2">
               <p className="truncate text-sm font-medium">{me.user.name}</p>
               <p className="truncate text-xs text-muted">{me.user.email}</p>
@@ -48,7 +50,7 @@ export function UserMenu({ me }: { me: Me }) {
             {me.memberships.length > 1 ? (
               <>
                 <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Label className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Empresas</DropdownMenu.Label>
+                <DropdownMenu.Label className="px-2.5 py-1 text-xs font-medium text-muted">Empresas</DropdownMenu.Label>
                 {me.memberships.map((membership) => (
                   <DropdownMenu.Item key={membership.companyId} className={itemClass} onSelect={() => switchCompany.mutate(membership.companyId)}>
                     <Building2 className="h-4 w-4 text-slate-400" />
@@ -66,15 +68,40 @@ export function UserMenu({ me }: { me: Me }) {
                 </Link>
               </DropdownMenu.Item>
             ) : null}
+            {me.activeCompany ? (
+              <DropdownMenu.Item asChild className={itemClass}>
+                <Link href="/app/settings/security">
+                  <UserCog className="h-4 w-4 text-slate-400" /> Conta e segurança
+                </Link>
+              </DropdownMenu.Item>
+            ) : null}
+            {me.activeCompany?.permissions.includes('billing:read') ? (
+              <DropdownMenu.Item asChild className={itemClass}>
+                <Link href="/app/settings/billing">
+                  <CreditCard className="h-4 w-4 text-slate-400" /> Assinatura
+                </Link>
+              </DropdownMenu.Item>
+            ) : null}
             <DropdownMenu.Item className={itemClass} onSelect={() => setPasswordOpen(true)}>
               <KeyRound className="h-4 w-4 text-slate-400" /> Alterar senha
             </DropdownMenu.Item>
+            <DropdownMenu.Item asChild className={itemClass}>
+              <Link href="/novidades" target="_blank">
+                <Sparkles className="h-4 w-4 text-slate-400" /> Novidades
+              </Link>
+            </DropdownMenu.Item>
+            {me.activeCompany ? (
+              <DropdownMenu.Item className={itemClass} onSelect={() => setFeedbackOpen(true)}>
+                <MessageSquareHeart className="h-4 w-4 text-slate-400" /> Enviar feedback
+              </DropdownMenu.Item>
+            ) : null}
             <DropdownMenu.Item className={itemClass} onSelect={() => void logout()}>
               <LogOut className="h-4 w-4 text-slate-400" /> Sair
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       <ChangePasswordDialog open={passwordOpen || me.user.mustChangePassword} forced={me.user.mustChangePassword} onOpenChange={setPasswordOpen} />
     </>
   );

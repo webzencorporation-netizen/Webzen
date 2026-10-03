@@ -12,11 +12,17 @@ const PASSWORD_CHANGE_ALLOWED_ROUTES = new Set([
 
 /** Carrega a sessão (se houver) em `request.auth` para todas as rotas. */
 export function registerAuth(app: FastifyInstance): void {
+  const idleTimeoutMs = app.container.env.SESSION_IDLE_TIMEOUT_HOURS * 3600_000;
   app.decorateRequest('auth', null);
   app.decorateRequest('tenant', null);
   app.addHook('onRequest', async (request) => {
+    // A API pública v1 não aceita sessão de navegador: só chave de API.
+    if (request.url.startsWith('/api/v1/')) {
+      request.auth = null;
+      return;
+    }
     const token = request.cookies[SESSION_COOKIE];
-    request.auth = token ? await loadSession(token) : null;
+    request.auth = token ? await loadSession(token, { idleTimeoutMs }) : null;
     // A rota registrada (sem query/entrada crua) define as únicas exceções para
     // sessões provisórias. O hook cobre também callbacks que não usam company/platform.
     const route = request.routeOptions.url;

@@ -2,6 +2,7 @@ import type { Prisma } from '@botsaas/database';
 import { NotFoundError } from '@botsaas/shared';
 import type { CompanyScope } from '../../context';
 import { audit } from '../../lib/audit';
+import { assertWithinLimit } from '../usage/limits';
 import type { AutomationInput } from './types';
 
 export function listAutomations(scope: CompanyScope) {
@@ -9,6 +10,7 @@ export function listAutomations(scope: CompanyScope) {
 }
 
 export async function createAutomation(scope: CompanyScope, input: AutomationInput) {
+  if (input.isActive !== false) await assertWithinLimit(scope, 'AUTOMATIONS');
   const automation = await scope.db.automation.create({
     data: {
       companyId: scope.companyId,
@@ -33,8 +35,12 @@ export async function updateAutomation(
   id: string,
   input: Partial<AutomationInput>,
 ) {
-  const exists = await scope.db.automation.findUnique({ where: { id }, select: { id: true } });
+  const exists = await scope.db.automation.findUnique({
+    where: { id },
+    select: { id: true, isActive: true },
+  });
   if (!exists) throw new NotFoundError('Automação não encontrada.');
+  if (input.isActive === true && !exists.isActive) await assertWithinLimit(scope, 'AUTOMATIONS');
   return scope.db.automation.update({
     where: { id },
     data: {

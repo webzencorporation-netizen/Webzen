@@ -41,7 +41,7 @@ function Segmented({ value, options, onChange, disabled }: { value: string; opti
           aria-checked={value === key}
           disabled={disabled}
           onClick={() => onChange(key)}
-          className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition', value === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900')}
+          className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition', value === key ? 'bg-surface text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900')}
         >
           {label}
         </button>
@@ -258,7 +258,7 @@ export function AgentSettings() {
           <CardContent className="grid gap-6 md:grid-cols-2">
             {grouped.map(([category, items]) => (
               <div key={category}>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{CATEGORY_LABELS[category] ?? category}</p>
+                <p className="mb-2 text-xs font-semibold text-muted">{CATEGORY_LABELS[category] ?? category}</p>
                 <ul className="space-y-2">
                   {items.map((tool) => (
                     <li key={tool.name} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">

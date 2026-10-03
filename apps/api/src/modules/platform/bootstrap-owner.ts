@@ -68,6 +68,7 @@ export async function bootstrapPlatformOwner(
           platformRole: 'PLATFORM_OWNER',
           isActive: true,
           mustChangePassword: false,
+          emailVerifiedAt: new Date(),
         },
         select: { id: true },
       });

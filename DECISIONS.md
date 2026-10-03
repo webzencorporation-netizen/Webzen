@@ -314,3 +314,119 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - `pnpm check:secrets` (CI e hook local de pré-commit) e `pnpm audit --audit-level high` no CI; `overrides` para `deepmerge-ts` 8 e `mysql2` 3.23.1 (transitivas do CLI do Prisma), validados com `prisma validate/generate/migrate status`.
 
 **Limites:** sem MFA (recomendado para administradores da plataforma; não improvisado). Sem fluxo de "esqueci a senha" (redefinição pela administração). `customerConfirmed` nas ferramentas de agenda continua sendo informado pelo modelo. Sessões duram 14 dias sem expiração por inatividade. A aplicação usa o papel dono do banco (Neon/local); um papel restrito só com DML é recomendado em produção. CSP usa `'unsafe-inline'` (exigido pelo Next sem nonce). `pnpm audit` no CI pode falhar quando surgir um alerta novo — é intencional, para que ele seja tratado.
+
+## D-035 — Catálogo central de planos, entitlements e acesso pela assinatura
+
+**Contexto:** a evolução para SaaS self-service (WebZen, 2026-10-01) exige preços novos (Starter R$ 250, Pro R$ 450, Business R$ 750; anual R$ 2.500/4.500/7.500), sem plano grátis permanente, com diferença real de limites e recursos entre os planos. Os planos ficavam só no seed (R$ 299/599/1.299), com seis recursos e um único preço. O status da assinatura (`PAST_DUE`, `CANCELLED`) não tinha efeito nenhum.
+
+**Decisão:**
+
+- `packages/shared/src/plans.ts` (`DEFAULT_PLANS`) é a única definição de preços mensal/anual, limites e recursos no código, mais rótulos, limiares de aviso (70/90/100%), cálculo de economia anual e a regra de acesso pela assinatura. Nenhum outro arquivo repete preço ou testa o nome do plano.
+- Em execução, a tabela `Plan` é a fonte da verdade, editável no painel da plataforma. O seed de referência cria planos ausentes e só reaplica o catálogo com `--sync-plans` (preserva ajustes do administrador). `priceCents` foi **renomeado** para `priceMonthlyCents` (migração sem perda); novos campos: preço anual, IDs de preço da Stripe (`STRIPE_PRICE_<PLANO>_<PERÍODO>`), visibilidade, destaque e ordem.
+- Entitlements novos: `CALENDAR_SYNC`, `API_ACCESS`, `WEBHOOKS`, `PRIORITY_SUPPORT`, `REMOVE_BRANDING`, `WHITE_LABEL`. Os dois últimos são **reservados** (`RESERVED_FEATURES`): ainda não há superfície onde a marca WebZen apareça para o cliente final, então não entram em plano nem na vitrine. Métrica nova `AUTOMATIONS` (automações ativas), aplicada na criação e na reativação.
+- Agenda própria passa a estar em todos os planos; Google Agenda é do Pro em diante.
+- Assinatura: `TRIALING` (dentro do prazo), `ACTIVE` e `PAST_DUE` liberam o uso; `UNPAID`, `INCOMPLETE`, `PAUSED`, `CANCELLED` e trial vencido bloqueiam a **IA** (atendimento e "Testar agente"), que é o custo variável. O cliente continua vendo e editando os próprios dados. Empresas **sem** assinatura (geridas manualmente) mantêm o comportamento anterior.
+- Avisos de consumo a 70/90/100% por job do worker (`usage.alerts`, a cada 30 min), com chave de deduplicação por métrica, limiar e mês.
+- `GET /api/public/plans` expõe só o que a página de preços precisa (sem IDs da Stripe), com cache público de 5 minutos.
+
+**Limites:** os limites de mensagens contam mensagens de saída; a cobrança da Meta é da conta WhatsApp Business conectada pelo cliente. O aviso de consumo é só no painel até o envio de e-mails existir.
+
+## D-036 — PATCH sem os defaults do schema de criação
+
+**Contexto:** no Zod 4, `.partial()` mantém os `.default()`. Seis rotas PATCH usavam `schema.partial()`: um PATCH só com o nome regravava os padrões por cima dos valores atuais. Confirmado em automações (reativava e apagava as condições), entradas de conhecimento (FAQ virava texto) e planos (plano desativado era reativado em qualquer edição).
+
+**Decisão:** helper `patchSchema()` em `lib/http.ts` remove os defaults do topo e torna tudo opcional; todas as rotas PATCH passaram a usá-lo. Testes de regressão em `patch-defaults.test.ts` e `plans-billing-access.test.ts`.
+
+## D-037 — Contas self-service: cadastro, confirmação de e-mail, recuperação de senha, convites e sessões
+
+**Contexto:** só a plataforma criava empresas; não havia recuperação de senha (dependia do administrador), verificação de e-mail, convite por e-mail (a equipe recebia senha provisória exibida a quem cadastrava), expiração por inatividade nem tela de sessões.
+
+**Decisão:**
+
+- Cadastro público cria pessoa (e-mail não confirmado), empresa e assinatura `INCOMPLETE` no plano escolhido; nada de sessão até confirmar o e-mail. Resposta idêntica (e com o mesmo custo de CPU) para e-mail já cadastrado, cujo dono recebe um aviso. Teste grátis (`BILLING_TRIAL_DAYS`, padrão 0) começa na confirmação do e-mail, um por pessoa (`User.trialUsedAt`).
+- Tokens de uso único só com hash (`AuthToken`), vinculados ao e-mail de emissão; redefinir a senha encerra todas as sessões.
+- Convites (`Invitation`) com token de uso único; o aceite por token mora em `modules/auth` (lint proíbe `systemDb` em módulos de empresa) e só usa empresa/papel do próprio convite.
+- Expiração por inatividade (`SESSION_IDLE_TIMEOUT_HOURS`) e gestão das próprias sessões.
+- O cadastro antigo de membro com senha provisória continua disponível na API (compatibilidade); o painel passa a usar convites.
+
+**Limites:** sem 2FA. Cadastros nunca confirmados não são apagados automaticamente. A localização da sessão não é exibida (só IP e dispositivo).
+
+## D-038 — E-mail transacional por fila, SMTP genérico
+
+**Contexto:** o sistema não enviava e-mail. Decisão do responsável: SMTP genérico.
+
+**Decisão:** contrato `EmailSender` em `packages/integrations` (`SmtpEmailSender` com TLS exigido fora da 465, timeouts e `disableFileAccess/disableUrlAccess`; `LogEmailSender` grava `.html` em desenvolvimento; `MemoryEmailSender` nos testes). Produção recusa `log` e remetente `.local`. Mensagens vão para `EmailOutbox` e saem pelo job `email.send`; o corpo é apagado após envio ou falha final. Templates WebZen em `modules/email/templates.ts`, com escape de todo valor dinâmico. `nodemailer` 10 (as versões ≤ 10.0.5 têm alertas altos no `pnpm audit`).
+
+## D-039 — Cobrança com Stripe: preço verificado, webhook idempotente e releitura do gateway
+
+**Contexto:** não havia gateway. Decisão do responsável: Stripe. Requisitos: o navegador nunca define preço, webhooks assinados e idempotentes, sem duplicar pagamentos/faturas, teste e produção separados.
+
+**Decisão:**
+
+- Contrato `BillingProvider` neutro (`modules/billing/provider.ts`) com implementações Stripe (SDK 22, API `2026-08-26.dahlia`, timeout e retries com idempotência da SDK) e simulada (testes; recusada em produção).
+- Checkout: plano + período → Price ID do plano → conferência do preço **na Stripe** (valor, BRL, período, ativo). Divergência recusa a cobrança.
+- Webhook `/webhooks/stripe`: assinatura sobre o corpo bruto → `BillingEvent` único por `(provider, externalId)` → job `billing.event`, que **relê** checkout/assinatura/fatura na Stripe (ordem dos eventos irrelevante, sem payload pessoal no banco). `livemode` diferente do modo da chave → `IGNORED`.
+- Empresa do objeto: assinatura já vinculada → cliente já vinculado → `companyId` gravado pelo servidor no checkout (só se o cliente não for de outra empresa).
+- Proprietário contrata, troca, cancela e reativa (`billing:manage`); administrador só vê (`billing:read`). Downgrade bloqueado quando o uso não cabe no plano novo. Troca imediata com proração da Stripe; cancelamento no fim do período.
+- Cupons = códigos promocionais da Stripe. Portal da Stripe para forma de pagamento.
+- Faturas locais (`Invoice`) para histórico/comprovante; e-mails de pagamento aprovado/recusado e cancelamento.
+- Guia de configuração em [docs/BILLING.md](docs/BILLING.md).
+
+**Limites:** sem nota fiscal, moeda única, sem homologação com conta Stripe real. Uma assinatura removida na Stripe sem evento entregue só é corrigida no próximo evento ou pelo reprocessamento manual.
+
+## D-040 — Identidade WebZen, design system com tema escuro e site público
+
+**Contexto:** a interface se chamava BotsSaaS, `/` redirecionava para o painel e o site inteiro estava fora dos buscadores. Não havia landing, preços, termos, privacidade, status, 404 estilizada nem tema escuro. Cerca de 220 usos de cores fixas (`slate`/`white`) em 38 arquivos impediam um tema escuro por reescrita pontual.
+
+**Decisão:**
+
+- Marca: "WebZen" com um ensō (círculo zen aberto) como símbolo. Paleta: tinta `#102A43` (texto e herói noturno), jade `#0A7F66` (ação; 4,95:1 com texto branco), névoa `#DCE6EA` (bordas), papel `#F6F8FA`, âmbar `#F2A93B` só para horários. Tipos: Schibsted Grotesk (títulos) e Inter (texto), servidos pelo próprio app (CSP mantida).
+- A escala `slate` do Tailwind passa a ser a escala de tinta e é **invertida no tema escuro** por variáveis CSS; superfícies usam tokens semânticos (`bg-surface`, `bg-canvas`) e superfícies escuras com texto branco usam `ink` fixo. Assim o painel antigo ganha o tema escuro sem reescrita. Preferência claro/escuro/sistema salva no navegador e aplicada antes da primeira pintura.
+- Site público no grupo `(site)`: landing com herói "23:47" (uma conversa atendida fora do expediente; única animação automática, respeita "reduzir movimento"), soluções, como funciona, benefícios, funcionalidades, integrações (o que ainda não existe aparece como "Em breve"), planos, FAQ; `/precos` com comparativo; termos, privacidade e cookies marcados como **versão provisória**; `/status` (endpoint público só com estados, cache de 1 min); robots, sitemap, Open Graph, JSON-LD e 404/erro próprios. Painel e plataforma ficam `noindex`.
+- Preços do site vêm da API pública no servidor, com revalidação de 5 min e aviso quando a API está fora — nenhum preço escrito no front.
+- Sem banner de cookies: só há o cookie essencial de sessão e a preferência de tema no navegador.
+- Rótulos em caixa alta removidos (frase normal), títulos de aba por página.
+
+**Limites:** textos jurídicos provisórios (precisam de revisão de advogado). Sem imagem Open Graph dedicada. O tema escuro inverte tons; telas novas devem usar tokens semânticos em vez de `slate`/`white` quando o contraste importar.
+
+## D-041 — API pública v1, chaves de API e webhooks de saída
+
+**Contexto:** o plano Business vende "API e chaves de acesso" e "Webhooks de eventos", que não existiam. Requisitos: chave mostrada uma vez e guardada só como hash, permissões por chave, revogação imediata, limites por chave, idempotência nas criações, webhooks assinados, com retry e sem SSRF.
+
+**Decisão:**
+
+- **Chaves** (`ApiKey`): `wz_live_` (produção) ou `wz_test_` + 40 caracteres; banco guarda SHA-256 e os 4 últimos caracteres (`wz_live_••••••••4k82`). Escopos `contacts:read`, `contacts:write`, `conversations:read`, `messages:send`. A cada requisição o plano é reavaliado (sem `API_ACCESS` ou assinatura inativa = 403), então rebaixar o plano desliga as chaves. Chave de outro ambiente é recusada. Gestão só com `developer:manage` (dono e administrador), com auditoria de criação, alteração e revogação.
+- **API v1** em `/api/v1` (versionada no prefixo): contatos (listar, ler, criar), conversas e mensagens (ler) e envio de texto na janela de 24 h. Autenticação **só** por Bearer: o cookie do painel é ignorado e o CSRF não se aplica. 120 req/min por chave (hash da chave no Redis). `Idempotency-Key` nos POST guarda a resposta por 24 h. Respostas em formato público (sem campos internos). Novo guard `apiKey(escopo)` no inventário de endpoints; teste exige guard em toda rota v1. OpenAPI 3.1 gerado dos schemas Zod só para a v1 (`/api/public/openapi.json`) e página `/docs/api`.
+- **Webhooks**: endpoints com segredo `whsec_` mostrado uma vez e cifrado com `SecretBox`; eventos públicos estáveis mapeados dos eventos de domínio (`DOMAIN_TO_WEBHOOK_EVENT`), incluindo os novos `conversation.closed → conversation.completed` e `subscription.updated`. O despacho de eventos cria uma entrega por endpoint (única por endpoint+evento) e o job `webhook.deliver` envia com assinatura `t=<unix>,v1=<HMAC-SHA256 de "t.corpo">`, 7 tentativas com backoff exponencial; após 15 falhas finais seguidas o endpoint é desativado com aviso no painel. Reenvio mantém o `id` do evento.
+- **SSRF** (`lib/safe-http.ts`): em produção só `https`, sem credenciais na URL, portas restritas, sem redirecionamento, timeout de 10 s; o IP é validado no `lookup` da própria conexão (sem janela para DNS rebinding) contra redes privadas, loopback, link-local/metadados, CGNAT, multicast e reservados, inclusive IPv4 mapeado em IPv6. Em desenvolvimento/testes, redes privadas são permitidas para testar com servidor local.
+
+**Bug evitado:** a primeira versão usava a regra `::ffff:0:0/96` no `BlockList` do Node, que compara IPv4 contra ela e bloquearia **todos** os destinos IPv4 em produção; o teste com `8.8.8.8` pegou antes do commit.
+
+**Limites:** a API v1 não cobre agenda, CRM e templates. Sem assinatura de webhook por chave rotativa dupla (troca de segredo é imediata). Payload dos eventos traz IDs (o receptor consulta a API para detalhes).
+
+## D-042 — Suporte por chamados e feedback no painel
+
+**Contexto:** "Suporte prioritário" é vendido no Business, mas não havia canal de suporte no produto (só e-mail).
+
+**Decisão:** chamados (`SupportTicket` + `SupportTicketMessage`) com categoria, status (`OPEN`, `IN_PROGRESS`, `WAITING_USER`, `RESOLVED`, `CLOSED`) e prioridade. Abertura com `support:write` (gerente para cima); plano com `PRIORITY_SUPPORT` abre como prioridade alta e a fila da plataforma ordena prioritários primeiro, depois os parados há mais tempo. A equipe responde (cliente recebe notificação e e-mail; chamado vai para "aguardando resposta") ou grava nota interna, que nunca sai na API do cliente. Resposta do cliente devolve o chamado à fila e notifica a plataforma. O cliente encerra e pode reabrir em até 7 dias. Feedback rápido (erro, sugestão, dúvida) disponível a qualquer pessoa da equipe, guardando só o caminho da página (sem query string). Permissão de plataforma `platform:support:manage`.
+
+**Limites:** sem anexos nos chamados, sem SLA medido nem resposta por e-mail (o cliente responde pelo painel).
+
+## D-043 — Indicadores do negócio na plataforma
+
+**Decisão:** `GET /api/platform/metrics/saas` e `/metrics/economics` (permissão `platform:usage:read`) e a tela **Indicadores**. MRR = soma dos preços de tabela das assinaturas pagantes (`ACTIVE`/`PAST_DUE`; anual ÷ 12), ARR = MRR × 12, receita efetiva = faturas pagas no mês, churn = cancelamentos do mês ÷ pagantes no início do mês, receita e clientes por plano, usuários ativos em 30 dias, bots no ar (IA ligada e WhatsApp conectado), mensagens e custo de IA do mês. Receita × custo de IA por empresa nos últimos 30 dias, em moedas separadas (R$ e US$), sem câmbio inventado. Nada é estimado fora do que está no banco.
+
+**Limites:** MRR não desconta cupons (a receita efetiva sim). Sem série histórica (cada consulta é o retrato do momento).
+
+## D-044 — Retenção de dados não varia por plano; aviso de upgrade e telas de "não encontrado"
+
+**Contexto:** a retomada previa "retenção por plano" (histórico menor no Starter) usando `runRetention`.
+
+**Decisão:** **não implementar.** Retenção por plano significaria apagar conversas de clientes que mudam para um plano menor ou que nunca escolheram isso, contrariando a regra "não deletar dados". O prazo de retenção continua sendo escolha da própria empresa (`messageRetentionDays`, padrão sem expurgo), como exige a LGPD (finalidade definida pelo controlador). A diferença entre planos fica nos limites de uso e recursos, que não destroem dados.
+
+**Também nesta etapa:**
+
+- **Aviso de upgrade:** quando uma ação (não uma leitura) é recusada com `LIMIT_REACHED` ou `FEATURE_DISABLED`, o cliente HTTP do painel dispara o evento `webzen:plan-limit` e o diálogo "Seu plano chegou ao limite" mostra a mensagem do backend. Quem tem `billing:manage` vai para Assinatura; os demais são orientados a falar com o proprietário. Leituras não abrem o aviso, para uma tela não abrir diálogo sozinha.
+- **Contato ou conversa inexistente / de outra empresa:** a página mostrava carregamento infinito; agora mostra "não encontrado" com link de volta. A API já respondia 404 (sem revelar existência).
+- A lista de mensagens da conversa virou `role="log"` (leitor de tela anuncia mensagens novas), o que também deixou o E2E estável.
+

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema, optionalText } from '../../../lib/http';
+import { idParamSchema, optionalText, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
 import { feature } from '../../features/service';
@@ -197,7 +197,7 @@ export const crmRoutes: FastifyPluginAsyncZod = async (app) => {
       preValidation: company('crm:configure'),
       schema: {
         params: idParamSchema,
-        body: fieldBody.omit({ key: true, target: true }).partial(),
+        body: patchSchema(fieldBody.omit({ key: true, target: true })),
       },
     },
     async (request) =>

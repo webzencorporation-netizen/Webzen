@@ -1,7 +1,7 @@
 # PROGRESS
 
 > Fonte de verdade do estado do projeto. Atualize ao fim de cada fase/sessão.
-> Última atualização: 2026-09-29 — IA real via Meta Model API (Muse Spark 1.3) integrada e homologada; Anthropic segue disponível, mas bloqueada por créditos na conta
+> Última atualização: 2026-10-01 — evolução SaaS WebZen em andamento (catálogo de planos, entitlements e acesso pela assinatura concluídos)
 
 ## Fase atual
 
@@ -178,9 +178,66 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - 37 testes de segurança novos; suíte completa verde (555 testes). `pnpm audit`: nenhuma vulnerabilidade conhecida.
   - Pendentes documentados: MFA para administradores, papel de banco restrito em produção, expiração de sessão por inatividade.
 
+- **Evolução SaaS WebZen — auditoria e catálogo de planos (2026-10-01, D-035/D-036)**
+  - Auditoria da evolução SaaS em [AUDIT_2026-10](docs/AUDIT_2026-10.md): nenhuma vulnerabilidade crítica aberta; lacunas altas para operar como SaaS (status da assinatura ignorado, sem recuperação de senha, sem cadastro self-service, sem cobrança, preços antigos).
+  - Catálogo central de planos com os preços novos (R$ 250/450/750; anual R$ 2.500/4.500/7.500), limites e recursos progressivos, entitlements novos e métrica de automações. Migração `billing_plans` (aditiva; `priceCents` renomeado), faturas e eventos de cobrança já modelados para a Stripe.
+  - Assinatura inativa bloqueia a IA; avisos de consumo 70/90/100% no painel; rota pública de planos.
+  - Bug corrigido: PATCH parcial regravava defaults (automações, conhecimento, planos).
+  - Validação: lint, typecheck e suíte completa verdes (testes novos: catálogo, seed, acesso, avisos, automações, PATCH).
+
+- **Contas self-service e e-mail transacional (2026-10-01, D-037/D-038)**
+  - API de cadastro público, confirmação de e-mail com login, reenvio, "esqueci a senha", redefinição, convites de equipe por e-mail, sessões ativas e expiração por inatividade. Nenhuma resposta revela se um e-mail tem cadastro; limites por IP e por destinatário.
+  - E-mail por fila com SMTP genérico (log em desenvolvimento), templates WebZen escapados; avisos de consumo de 90/100% também por e-mail aos administradores.
+  - Migração `accounts_email` (aditiva; contas existentes marcadas como confirmadas). Variáveis novas no `.env.example`.
+  - Validação: lint, typecheck, suíte completa (API 273 testes), build e smoke dos três bundles verdes. Bug de build pego pelo smoke: `nodemailer` precisava ser declarado na API (D-016).
+
+- **Cobrança com Stripe (2026-10-01, D-039)**
+  - Checkout com preço conferido na Stripe, webhook assinado e idempotente processado pela fila relendo o gateway, faturas, troca de plano com proração, downgrade bloqueado quando o uso não cabe, cancelamento/reativação, portal, avisos por e-mail e reprocessamento pela plataforma. Guia em [BILLING](docs/BILLING.md).
+  - 12 testes ponta a ponta com gateway simulado (Fluxo 3: plano → checkout → webhook → plano atualizado), incluindo evento repetido, assinatura inválida, evento de produção em teste, preço adulterado, permissões, isolamento e reprocessamento.
+  - Validação: lint, typecheck, 633 testes, build e smoke dos bundles verdes. Pendente: homologação com conta Stripe (modo teste) quando houver chaves.
+
+- **Interface WebZen: design system, site público, contas e assinatura (2026-10-01, D-040)**
+  - Identidade WebZen (ensō, tinta/jade/névoa/âmbar, Schibsted Grotesk + Inter), tema claro/escuro/sistema em todo o painel, rótulos sem caixa alta, títulos de aba.
+  - Site público: landing, preços com mensal/anual e comparativo, termos/privacidade/cookies provisórios, status, 404, robots/sitemap/JSON-LD.
+  - Telas de cadastro, login (com reenvio de confirmação e retorno seguro), esqueci/redefinir senha, confirmação de e-mail e aceite de convite.
+  - Painel: Configurações → Assinatura (plano, status, pagamento, troca, cancelamento, consumo 70/90/100%, faturas), Conta e segurança (tema, senha, sessões), Equipe por convite, checklist de configuração no início, aviso de assinatura pendente; plataforma → Cobrança (eventos e reprocessamento).
+  - Teste manual no navegador: Fluxo 1 (cadastro → e-mail → confirmação → painel), telas de assinatura, segurança e equipe, landing em desktop/celular e claro/escuro.
+  - E2E: 12 cenários (3 novos: site público, cadastro com confirmação, recuperação de senha). Corrigido: E2E falhava ao rodar duas vezes em 15 min por causa do limite de login por conta no Redis.
+  - Validação: lint, typecheck, 641 testes, build, smoke dos bundles e E2E verdes.
+
+- **API pública v1, chaves de API e webhooks (2026-10-01, D-041)**
+  - Chaves com escopos, exibição única, revogação e desligamento automático ao rebaixar o plano; API v1 (contatos, conversas, envio de mensagens) com limite por chave e idempotência; OpenAPI e página `/docs/api`.
+  - Webhooks assinados com retry exponencial, desativação após falhas seguidas, reenvio, evento de teste e histórico de entregas; proteção SSRF com validação de IP na conexão.
+  - Tela Configurações → API e webhooks (convite para o Business quando o plano não inclui).
+  - "Sem a marca WebZen" deixou de ser vendido no Business (não há onde a marca apareça para o cliente final): recurso reservado.
+  - Bug evitado antes do commit: bloqueio de todo IPv4 pela regra de IPv4 mapeado no BlockList.
+  - Validação: lint, typecheck, 667 testes (26 novos), build e smoke dos bundles verdes.
+
+- **Suporte por chamados e feedback (2026-10-01, D-042)**
+  - Chamados com categoria, status e prioridade; fila da plataforma com prioritários primeiro, resposta, nota interna, mudança de status/prioridade; e-mail e notificação ao cliente; reabertura em até 7 dias; feedback no menu do usuário.
+  - Teste manual no navegador: abrir chamado → página do chamado. 4 testes de API novos (fila, nota interna invisível, isolamento/permissões, reabertura).
+
+- **Indicadores do negócio na plataforma (2026-10-01, D-043)**: MRR/ARR, recebido no mês, assinantes, cancelamentos e churn, empresas, usuários ativos, bots no ar, mensagens e custo de IA, receita por plano e receita × custo de IA por empresa. Fluxo 7 verificado no navegador. 2 testes novos com valores conferidos à mão.
+
+- **Novidades, documentação e auditoria final parcial (2026-10-01)**: página `/novidades` (changelog em `apps/web/src/lib/changelog.ts`), paleta Ctrl+K, README do WebZen, DEPLOYMENT com config de SMTP/Stripe, passos pós-merge e tabela de backups, ARCHITECTURE com `/api/v1`, `/webhooks/stripe` e jobs novos; teste que obriga o `.env.example` a documentar toda variável. Varreduras: sem TODO/FIXME, `console.log`, `any`, `@ts-ignore`/`eslint-disable` no código-fonte; `check:secrets` e `pnpm audit` limpos; nenhum link interno quebrado.
+
+## Ponto de retomada (evolução SaaS WebZen, branch `feat/webzen-saas`, PR #6)
+
+Etapas concluídas (commits no PR): auditoria; catálogo de planos/entitlements; contas self-service e e-mail; cobrança Stripe; interface WebZen e site público; API v1/chaves/webhooks; suporte; indicadores; Ctrl+K; novidades e docs.
+
+Próximos passos, nesta ordem:
+
+1. ~~Retenção por plano~~ — avaliada e descartada (D-044: apagaria dados de clientes).
+2. ~~Testes E2E dos fluxos 4, 5 e 6~~ — concluído em `e2e/team-plan-isolation.spec.ts`, com o aviso de upgrade e as telas de "não encontrado" (D-044).
+3. ~~Auditoria final~~ — concluída em 2026-10-03: lint, typecheck, 678 testes, build, smoke dos 3 bundles, 15 cenários E2E, `check:secrets` e `pnpm audit` limpos; resumo em 20 itens entregue ao responsável.
+4. Pendências fora do alcance local: homologar Stripe (modo teste) e SMTP reais; revisão jurídica dos textos; 2FA; multi-bot por empresa (decisão de escopo em AUDIT_2026-10).
+
+Verificação local: `pnpm services:local` (Postgres/Redis), depois lint/typecheck/test/build/test:build e o E2E com as portas 4200/3200 descritas em VALIDATION.
+
 ## Em andamento
 
-- Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
+- Evolução SaaS WebZen (branch `feat/webzen-saas`), em etapas — ver [AUDIT_2026-10](docs/AUDIT_2026-10.md): e-mail (SMTP), cadastro/verificação/recuperação de senha/convites/sessões, billing Stripe, site público e rebrand, painel de assinatura.
+- Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
 
 ## Próximos passos
 

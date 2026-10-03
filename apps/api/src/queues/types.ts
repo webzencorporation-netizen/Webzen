@@ -22,6 +22,10 @@ export interface JobPayloads {
   'appointments.reminders': Record<string, never>;
   'maintenance.retention': Record<string, never>;
   'agent.recover-stalled': Record<string, never>;
+  'usage.alerts': Record<string, never>;
+  'email.send': { emailId: string };
+  'billing.event': { billingEventId: string };
+  'webhook.deliver': { companyId: string; deliveryId: string };
 }
 
 export type JobName = keyof JobPayloads;
@@ -38,6 +42,10 @@ export const JOB_NAMES = [
   'appointments.reminders',
   'maintenance.retention',
   'agent.recover-stalled',
+  'usage.alerts',
+  'email.send',
+  'billing.event',
+  'webhook.deliver',
 ] as const satisfies readonly JobName[];
 
 export interface EnqueueOptions {
@@ -74,4 +82,9 @@ export const JOB_RETRY_POLICY: Record<JobName, { attempts: number; backoffMs: nu
   'appointments.reminders': { attempts: 1, backoffMs: 0 },
   'maintenance.retention': { attempts: 1, backoffMs: 0 },
   'agent.recover-stalled': { attempts: 1, backoffMs: 0 },
+  'usage.alerts': { attempts: 1, backoffMs: 0 },
+  'email.send': { attempts: 5, backoffMs: 30_000 },
+  'billing.event': { attempts: 6, backoffMs: 15_000 },
+  // Backoff exponencial: ~10 s, 20 s, 40 s, 80 s, 160 s, 320 s.
+  'webhook.deliver': { attempts: 7, backoffMs: 10_000 },
 };

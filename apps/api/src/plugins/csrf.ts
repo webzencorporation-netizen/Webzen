@@ -12,6 +12,8 @@ export function registerCsrf(app: FastifyInstance, allowedOrigins: string[]): vo
   const origins = new Set(allowedOrigins.map((url) => new URL(url).origin));
   app.addHook('onRequest', async (request) => {
     if (!MUTATING_METHODS.has(request.method) || !request.url.startsWith('/api/')) return;
+    // API pública: autenticada só por chave no cabeçalho (sem cookie), então não há CSRF.
+    if (request.url.startsWith('/api/v1/')) return;
     if (!request.headers['x-requested-with']) {
       throw new AuthorizationError('Requisição bloqueada (CSRF).');
     }

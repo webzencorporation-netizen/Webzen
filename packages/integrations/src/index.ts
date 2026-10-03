@@ -15,3 +15,7 @@ export {
   type GoogleTokens,
 } from './calendar/google';
 export * from './stt';
+export * from './email/types';
+export { SmtpEmailSender, type SmtpConfig } from './email/smtp';
+export { LogEmailSender } from './email/log';
+export { MemoryEmailSender } from './email/memory';

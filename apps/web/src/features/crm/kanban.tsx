@@ -28,7 +28,7 @@ function LeadCard({ lead, draggable }: { lead: Lead; draggable: boolean }) {
       style={style}
       {...attributes}
       {...listeners}
-      className={cn('rounded-lg border border-border bg-white p-3 shadow-sm', draggable && 'cursor-grab active:cursor-grabbing', isDragging && 'z-50 rotate-1 shadow-xl ring-2 ring-brand-300')}
+      className={cn('rounded-lg border border-border bg-surface p-3 shadow-sm', draggable && 'cursor-grab active:cursor-grabbing', isDragging && 'z-50 rotate-1 shadow-xl ring-2 ring-brand-300')}
     >
       <Link href={`/app/contacts/${lead.contact.id}`} className="block text-sm font-medium text-slate-900 hover:underline" onPointerDown={(event) => event.stopPropagation()}>
         {lead.contact.name ?? formatPhone(lead.contact.phone)}
@@ -55,7 +55,7 @@ function StageColumn({ stage, leads, draggable }: { stage: LeadStage; leads: Lea
         <p className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
           {stage.name}
-          <span className="rounded-full bg-white px-1.5 text-xs text-muted">{leads.length}</span>
+          <span className="rounded-full bg-surface px-1.5 text-xs text-muted">{leads.length}</span>
         </p>
         {total > 0 ? <span className="text-[11px] text-muted">{formatMoneyCents(total)}</span> : null}
       </div>

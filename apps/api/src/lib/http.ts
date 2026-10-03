@@ -37,3 +37,22 @@ export const optionalText = (max = 500) =>
     .transform((value) =>
       value === undefined || value === null || value.trim() === '' ? null : value.trim(),
     );
+
+type WithoutDefaults<T extends z.ZodRawShape> = {
+  [K in keyof T]: T[K] extends z.ZodDefault<infer Inner> ? Inner : T[K];
+};
+
+/**
+ * Schema de PATCH: todos os campos opcionais e SEM os `.default()` do schema de criação.
+ * No Zod 4, `.partial()` mantém os defaults — um PATCH só com `name` regravaria os valores
+ * padrão por cima dos atuais (ex.: reativar uma automação e apagar as condições dela).
+ */
+export function patchSchema<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
+  const shape = Object.fromEntries(
+    Object.entries(schema.shape).map(([key, value]) => [
+      key,
+      value instanceof z.ZodDefault ? value.unwrap() : value,
+    ]),
+  ) as WithoutDefaults<T>;
+  return z.object(shape).partial();
+}

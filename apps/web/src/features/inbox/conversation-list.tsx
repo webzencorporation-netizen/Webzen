@@ -55,11 +55,11 @@ export function ConversationList({ selectedId, filter, onFilterChange }: { selec
                 onClick={() => onFilterChange(item.value)}
                 className={cn(
                   'flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition',
-                  filter === item.value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                  filter === item.value ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
                 )}
               >
                 {item.label}
-                {count ? <span className={cn('rounded-full px-1.5 text-[10px]', filter === item.value ? 'bg-white/20' : 'bg-white text-slate-700')}>{count}</span> : null}
+                {count ? <span className={cn('rounded-full px-1.5 text-[10px]', filter === item.value ? 'bg-white/20' : 'bg-surface text-slate-700')}>{count}</span> : null}
               </button>
             );
           })}

@@ -46,6 +46,9 @@ API e worker recebem variáveis pelo gerenciador de processos/segredos do host. 
 | Objetos         | `STORAGE_PROVIDER=s3`, `S3_BUCKET`, região/endpoint e credenciais ou identidade do host                                                                                                   |
 | Áudio           | `STT_PROVIDER=none` ou `openai-compatible` com URL/chave/modelo necessários                                                                                                               |
 | Google opcional | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`                                                                                                                         |
+| E-mail          | `EMAIL_PROVIDER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`/`SMTP_PASSWORD`, `EMAIL_FROM` com domínio real (SPF/DKIM configurados no provedor)                            |
+| Cobrança        | `BILLING_PROVIDER=stripe`, `STRIPE_SECRET_KEY` (`sk_live_` só aqui), `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_<PLANO>_<PERÍODO>`; ver [BILLING](BILLING.md)                                 |
+| Contas          | `SIGNUP_ENABLED`, `SESSION_IDLE_TIMEOUT_HOURS`, `ACCOUNT_EMAIL_RATE_LIMIT_PER_HOUR`, `BILLING_TRIAL_DAYS`                                                                                 |
 
 `parseEnv` recusa IA/WhatsApp/STT mock e armazenamento local em produção. Não há flag que libere mocks nesse ambiente. A composição dos providers repete essa recusa e falha quando um provider real configurado está incompleto, em vez de trocá-lo por simulação (D-025). Mantenha a chave de criptografia persistente e protegida: trocá-la sem recriptografar os registros torna os tokens existentes ilegíveis; rotação automatizada ainda não existe.
 
@@ -64,6 +67,31 @@ A configuração de token WhatsApp é por número/empresa e acontece no painel; 
 - [ ] Bucket de arquivos privado; chave do storage restrita a esse bucket.
 - [ ] Primeiro administrador criado com `start:bootstrap-owner` (sem credencial padrão) e senha forte.
 - [ ] Logs e alertas acompanhados: falhas de login, `login_account_limited`, assinatura de webhook inválida e erros 5xx.
+- [ ] SMTP de produção com remetente do domínio da WebZen e SPF/DKIM/DMARC válidos (sem isso, confirmação de e-mail e recuperação de senha caem no spam).
+- [ ] Stripe em modo produção: preços conferidos com os planos, webhook `/webhooks/stripe` com os eventos de [BILLING](BILLING.md) e Customer Portal ativo.
+- [ ] Textos de termos, privacidade e cookies revisados por advogado (as versões atuais são provisórias).
+
+### Primeira publicação da evolução SaaS (PR `feat/webzen-saas`)
+
+Depois do merge, no banco de produção (Neon), nesta ordem:
+
+```bash
+pnpm db:migrate:deploy                          # billing_plans, accounts_email, api_keys_webhooks, support_feedback
+pnpm db:seed -- --reference --sync-plans        # aplica os preços R$ 250/450/750 e anuais aos planos existentes
+```
+
+As quatro migrações só adicionam tabelas, colunas e valores de enum; `priceCents` é renomeado para `priceMonthlyCents` sem perda, e as contas existentes são marcadas como e-mail confirmado. Configure SMTP e Stripe antes de abrir o cadastro público (`SIGNUP_ENABLED=true`).
+
+## Backups
+
+| O quê                    | Como                                                                                                                   | Frequência sugerida                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| PostgreSQL (Neon)        | Restauração para um ponto no tempo do próprio Neon (histórico do branch) + `pg_dump` cifrado guardado fora do provedor | Contínuo (PITR) + dump diário com retenção de 30 dias |
+| Arquivos (Cloudflare R2) | Versionamento do bucket ou cópia para um segundo bucket/conta                                                          | Diário                                                |
+| `ENCRYPTION_KEY`         | Cofre de segredos, com cópia separada do backup do banco                                                               | A cada troca                                          |
+| Configuração             | Variáveis de ambiente no gerenciador de segredos do host (nunca no git)                                                | A cada mudança                                        |
+
+Teste a restauração ao menos uma vez por trimestre num ambiente separado: banco restaurado + mesma `ENCRYPTION_KEY` + bucket. Redis guarda filas transitórias; ao perder Redis, eventos de webhook já gravados são reenfileirados pela recuperação descrita em [INCIDENTS](INCIDENTS.md), e eventos da Stripe podem ser reprocessados pela plataforma (Cobrança → Reprocessar).
 
 ## Rede, cookies e callbacks
 
@@ -84,7 +112,7 @@ pnpm db:migrate:deploy
 pnpm db:seed -- --reference
 ```
 
-O seed de referência cria planos/preços ausentes e não sobrescreve registros existentes. Confira os preços e planos no painel antes de usá-los comercialmente. O seed completo cria dados e usuários de demonstração e é bloqueado em produção; não reduza `NODE_ENV` para contornar essa proteção.
+O seed de referência cria planos/preços ausentes e não sobrescreve registros existentes (preserva ajustes feitos no painel). Para reaplicar o catálogo do código (`packages/shared/src/plans.ts`) aos planos existentes — por exemplo, na troca de preços de 2026-10-01 — rode uma vez `pnpm db:seed -- --reference --sync-plans`. Os IDs de preço da Stripe (`STRIPE_PRICE_<PLANO>_<MONTHLY|YEARLY>`) são gravados sempre que estiverem no ambiente. Confira os preços e planos no painel antes de usá-los comercialmente. O seed completo cria dados e usuários de demonstração e é bloqueado em produção; não reduza `NODE_ENV` para contornar essa proteção.
 
 Antes de expor uma implantação nova, provisione o primeiro `PLATFORM_OWNER` com `pnpm --filter @botsaas/api start:bootstrap-owner` após o build. Injete `DATABASE_URL`, `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_NAME` e `BOOTSTRAP_OWNER_PASSWORD` pelo gerenciador de segredos; a senha também pode vir de stdin não interativo. Não passe a senha como argumento nem a grave no histórico do shell. O comando não carrega `.env` nem inicializa providers. Para desenvolvimento existe `pnpm --filter @botsaas/api bootstrap:owner`.
 

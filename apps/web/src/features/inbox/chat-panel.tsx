@@ -97,6 +97,17 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
   }
 
   const data = conversation.data;
+  if (conversation.isError && !data) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm font-semibold text-slate-900">Conversa não encontrada</p>
+        <p className="max-w-sm text-sm text-muted">Ela pode ter sido excluída ou não pertencer a esta empresa.</p>
+        <Button asChild variant="secondary" size="sm">
+          <Link href="/app/conversations"><ArrowLeft className="h-4 w-4" /> Voltar para conversas</Link>
+        </Button>
+      </div>
+    );
+  }
   if (conversation.isLoading || !data) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -110,7 +121,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
 
   return (
     <div className="flex h-full flex-col bg-[#f3f4f1]">
-      <div className="flex items-center gap-3 border-b border-border bg-white px-3 py-2.5 sm:px-4">
+      <div className="flex items-center gap-3 border-b border-border bg-surface px-3 py-2.5 sm:px-4">
         <Link href={`/app/conversations?filter=${filter}`} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="Voltar para a lista">
           <ArrowLeft className="h-5 w-5" />
         </Link>
@@ -139,7 +150,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
             <MoreVertical className="h-5 w-5" />
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <DropdownMenu.Content align="end" sideOffset={6} className="z-50 w-60 rounded-xl border border-border bg-white p-1.5 shadow-xl">
+            <DropdownMenu.Content align="end" sideOffset={6} className="z-50 w-60 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
               {can('conversations:mode') && data.mode === 'AI' ? (
                 <DropdownMenu.Item className={menuItem} onSelect={() => mode.mutate('pause')}>
                   <PauseCircle className="h-4 w-4 text-slate-400" /> Pausar IA nesta conversa
@@ -163,7 +174,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
               {can('conversations:assign') && team.data ? (
                 <>
                   <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                  <DropdownMenu.Label className="px-2.5 py-1 text-[11px] font-semibold uppercase text-muted">Responsável</DropdownMenu.Label>
+                  <DropdownMenu.Label className="px-2.5 py-1 text-[11px] font-semibold text-muted">Responsável</DropdownMenu.Label>
                   <DropdownMenu.Item className={menuItem} onSelect={() => assign.mutate(null)}>
                     Sem responsável
                   </DropdownMenu.Item>
@@ -193,7 +204,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 scrollbar-thin sm:px-6">
+      <div role="log" aria-label="Mensagens da conversa" className="min-h-0 flex-1 overflow-y-auto px-3 py-4 scrollbar-thin sm:px-6">
         {messages.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-12 w-2/3" />
@@ -206,7 +217,7 @@ export function ChatPanel({ conversationId, filter, onToggleDetails }: { convers
       </div>
 
       {canReply ? (
-        <div className="border-t border-border bg-white p-3">
+        <div className="border-t border-border bg-surface p-3">
           {windowClosed ? (
             <div className="flex flex-col gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
               <span>A janela de 24h desta conversa está fechada. Para falar com o cliente, envie um template aprovado.</span>

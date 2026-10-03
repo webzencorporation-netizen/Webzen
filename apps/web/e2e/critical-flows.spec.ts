@@ -30,7 +30,7 @@ test.describe('fluxos críticos', () => {
 
     await page.goto('/app/conversations');
     await page.getByText('Paula E2E').first().click();
-    await expect(page.getByText('Olá, gostaria de informações')).toBeVisible();
+    await expect(page.getByRole('log', { name: 'Mensagens da conversa' }).getByText('Olá, gostaria de informações')).toBeVisible();
     // O worker processa o agente (mock) após o agrupamento de mensagens.
     await expect(page.getByText('Atendente virtual').first()).toBeVisible({ timeout: 30_000 });
 
@@ -38,7 +38,7 @@ test.describe('fluxos críticos', () => {
     await expect(page.getByText('Você assumiu a conversa.')).toBeVisible();
     await page.getByLabel('Mensagem', { exact: true }).fill('Oi Paula, aqui é a Dra. Helena!');
     await page.getByRole('button', { name: 'Enviar mensagem' }).click();
-    await expect(page.getByText('Oi Paula, aqui é a Dra. Helena!')).toBeVisible();
+    await expect(page.getByRole('log', { name: 'Mensagens da conversa' }).getByText('Oi Paula, aqui é a Dra. Helena!')).toBeVisible();
 
     await page.getByRole('button', { name: 'Devolver para IA' }).click();
     await expect(page.getByText('Conversa devolvida para a IA.')).toBeVisible();

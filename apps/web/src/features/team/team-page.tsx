@@ -1,12 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Users } from 'lucide-react';
+import { Mail, Plus, RotateCw, Trash2, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { PageContainer } from '@/components/layout/company-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/form';
@@ -17,6 +17,17 @@ import { api, errorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useCan, useMe } from '@/lib/session';
 import type { Member } from '../types';
+
+interface Invitation {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  lastSentAt: string;
+  expired: boolean;
+}
+
+const emailValid = (value: string) => /^\S+@\S+\.\S+$/.test(value.trim());
 
 const ROLE_DESCRIPTIONS: Record<string, string> = {
   COMPANY_OWNER: 'Controle total da empresa.',
@@ -32,15 +43,34 @@ export function TeamPage() {
   const can = useCan();
   const { data: me } = useMe();
   const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', role: 'ATTENDANT' });
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [form, setForm] = useState({ email: '', role: 'ATTENDANT' });
   const [removing, setRemoving] = useState<Member | null>(null);
+  const [revoking, setRevoking] = useState<Invitation | null>(null);
   const members = useQuery({ queryKey: ['team'], queryFn: () => api.get<Member[]>('/app/team') });
-  const refresh = () => void client.invalidateQueries({ queryKey: ['team'] });
+  const invitations = useQuery({ queryKey: ['team-invitations'], queryFn: () => api.get<Invitation[]>('/app/team/invitations') });
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ['team'] });
+    void client.invalidateQueries({ queryKey: ['team-invitations'] });
+  };
   const onError = (error: unknown) => toast.error(errorMessage(error));
   const invite = useMutation({
-    mutationFn: () => api.post<{ temporaryPassword: string | null }>('/app/team', form),
-    onSuccess: (result) => { refresh(); setInviting(false); setForm({ name: '', email: '', role: 'ATTENDANT' }); if (result.temporaryPassword) setTempPassword(result.temporaryPassword); else toast.success('Usuário adicionado à equipe.'); },
+    mutationFn: () => api.post<Invitation>('/app/team/invitations', form),
+    onSuccess: (result) => {
+      refresh();
+      setInviting(false);
+      setForm({ email: '', role: 'ATTENDANT' });
+      toast.success(`Convite enviado para ${result.email}.`);
+    },
+    onError,
+  });
+  const resend = useMutation({
+    mutationFn: (id: string) => api.post(`/app/team/invitations/${id}/resend`),
+    onSuccess: () => { refresh(); toast.success('Convite reenviado.'); },
+    onError,
+  });
+  const revoke = useMutation({
+    mutationFn: (id: string) => api.delete(`/app/team/invitations/${id}`),
+    onSuccess: () => { setRevoking(null); refresh(); toast.success('Convite cancelado.'); },
     onError,
   });
   const update = useMutation({ mutationFn: ({ id, ...body }: { id: string; role?: string; isActive?: boolean }) => api.patch(`/app/team/${id}`, body), onSuccess: refresh, onError });
@@ -49,7 +79,7 @@ export function TeamPage() {
 
   return (
     <PageContainer className="max-w-5xl">
-      <PageHeader title="Equipe" description="Quem acessa o painel e o que cada pessoa pode fazer." actions={manage ? <Button onClick={() => setInviting(true)}><Plus className="h-4 w-4" /> Adicionar pessoa</Button> : null} />
+      <PageHeader title="Equipe" description="Quem acessa o painel e o que cada pessoa pode fazer." actions={manage ? <Button onClick={() => setInviting(true)}><Plus className="h-4 w-4" /> Convidar pessoa</Button> : null} />
       <Card>
         {members.isLoading ? <div className="p-4"><Skeleton className="h-40" /></div> : !members.data?.length ? <EmptyState icon={Users} title="Nenhum membro" /> : (
           <Table>
@@ -82,18 +112,46 @@ export function TeamPage() {
           </Table>
         )}
       </Card>
-      <Dialog open={inviting} onOpenChange={setInviting} title="Adicionar pessoa à equipe" footer={<Button onClick={() => invite.mutate()} loading={invite.isPending} disabled={!form.email || form.name.length < 2}>Adicionar</Button>}>
+      {invitations.data && invitations.data.length > 0 ? (
+        <Card className="mt-6">
+          <CardHeader title="Convites pendentes" description="O convite vale por 7 dias e só pode ser usado uma vez." />
+          <ul className="divide-y divide-border">
+            {invitations.data.map((invitation) => (
+              <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"><Mail className="h-4 w-4" aria-hidden /></span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{invitation.email}</p>
+                    <p className="text-xs text-muted">
+                      {roleLabels[invitation.role]} · {invitation.expired ? 'expirado' : `expira em ${formatDateTime(invitation.expiresAt)}`}
+                    </p>
+                  </div>
+                  {invitation.expired ? <Badge tone="amber">Expirado</Badge> : null}
+                </div>
+                {manage ? (
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => resend.mutate(invitation.id)} loading={resend.isPending && resend.variables === invitation.id}>
+                      <RotateCw className="h-4 w-4" /> Reenviar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setRevoking(invitation)} aria-label={`Cancelar convite de ${invitation.email}`}>
+                      <X className="h-4 w-4" /> Cancelar convite
+                    </Button>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+      <Dialog open={inviting} onOpenChange={setInviting} title="Convidar pessoa para a equipe" description="Enviamos um link por e-mail. A pessoa cria a própria senha ao aceitar." footer={<Button onClick={() => invite.mutate()} loading={invite.isPending} disabled={!emailValid(form.email)}>Enviar convite</Button>}>
         <div className="space-y-4">
-          <Field label="Nome">{(id) => <Input id={id} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />}</Field>
           <Field label="E-mail">{(id) => <Input id={id} type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />}</Field>
           <Field label="Papel" hint={ROLE_DESCRIPTIONS[form.role]}>
             {(id) => <Select id={id} value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>{Object.keys(ROLE_DESCRIPTIONS).map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</Select>}
           </Field>
         </div>
       </Dialog>
-      <Dialog open={Boolean(tempPassword)} onOpenChange={() => setTempPassword(null)} title="Acesso criado" description="Envie a senha temporária para a pessoa por um canal seguro. Ela deverá trocá-la no primeiro acesso." size="sm">
-        <code className="block rounded-lg bg-slate-900 px-3 py-2 text-center font-mono text-lg text-white">{tempPassword}</code>
-      </Dialog>
+      <ConfirmDialog open={Boolean(revoking)} onOpenChange={(open) => !open && setRevoking(null)} title="Cancelar o convite?" description={`O link enviado para ${revoking?.email ?? ''} deixa de funcionar.`} confirmLabel="Cancelar convite" loading={revoke.isPending} onConfirm={() => revoking && revoke.mutate(revoking.id)} />
       <ConfirmDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)} title="Remover da equipe?" description={`${removing?.user.name} perderá o acesso a esta empresa.`} confirmLabel="Remover" loading={remove.isPending} onConfirm={() => removing && remove.mutate(removing.id)} />
     </PageContainer>
   );

@@ -1,26 +1,18 @@
-import { decimalToNumber, type Prisma, type UsageMetric } from '@botsaas/database';
-import { LimitReachedError, type UsageState } from '@botsaas/shared';
+import { decimalToNumber, type Prisma } from '@botsaas/database';
+import {
+  LimitReachedError,
+  USAGE_ALERT_THRESHOLDS,
+  USAGE_METRIC_LABELS,
+  USAGE_METRICS,
+  type UsageMetric,
+  type UsageState,
+} from '@botsaas/shared';
 import type { CompanyScope } from '../../context';
 import { getOwnCompany } from '../../lib/company-record';
 import { monthStart, periodStart } from '../../lib/time';
+import { getBillingAccess } from '../billing/access';
 
-export const USAGE_METRICS: UsageMetric[] = [
-  'AI_CALLS_PER_MONTH',
-  'MESSAGES_PER_MONTH',
-  'AI_COST_USD_PER_MONTH',
-  'USERS',
-  'WHATSAPP_NUMBERS',
-  'STORAGE_MB',
-];
-
-export const METRIC_LABELS: Record<UsageMetric, string> = {
-  AI_CALLS_PER_MONTH: 'Atendimentos da IA no mês',
-  MESSAGES_PER_MONTH: 'Mensagens enviadas no mês',
-  AI_COST_USD_PER_MONTH: 'Consumo da IA no mês (US$)',
-  USERS: 'Usuários',
-  WHATSAPP_NUMBERS: 'Números de WhatsApp',
-  STORAGE_MB: 'Armazenamento (MB)',
-};
+export { USAGE_METRICS };
 
 export interface MetricStatus {
   metric: UsageMetric;
@@ -56,20 +48,24 @@ async function currentValues(
   since: Date,
 ): Promise<Record<UsageMetric, number>> {
   const { db } = scope;
-  const [aiCalls, messages, aiCost, users, numbers, media, documents] = await Promise.all([
-    db.usageRecord.count({ where: { kind: 'AI_CALL', isTest: false, occurredAt: { gte: since } } }),
-    db.message.count({
-      where: { direction: 'OUTBOUND', createdAt: { gte: since }, status: { not: 'FAILED' } },
-    }),
-    db.usageRecord.aggregate({
-      where: { kind: 'AI_CALL', occurredAt: { gte: since } },
-      _sum: { costUsd: true },
-    }),
-    db.companyMember.count({ where: { isActive: true } }),
-    db.whatsAppAccount.count(),
-    db.mediaAsset.aggregate({ _sum: { sizeBytes: true } }),
-    db.knowledgeDocument.aggregate({ _sum: { sizeBytes: true } }),
-  ]);
+  const [aiCalls, messages, aiCost, users, numbers, media, documents, automations] =
+    await Promise.all([
+      db.usageRecord.count({
+        where: { kind: 'AI_CALL', isTest: false, occurredAt: { gte: since } },
+      }),
+      db.message.count({
+        where: { direction: 'OUTBOUND', createdAt: { gte: since }, status: { not: 'FAILED' } },
+      }),
+      db.usageRecord.aggregate({
+        where: { kind: 'AI_CALL', occurredAt: { gte: since } },
+        _sum: { costUsd: true },
+      }),
+      db.companyMember.count({ where: { isActive: true } }),
+      db.whatsAppAccount.count(),
+      db.mediaAsset.aggregate({ _sum: { sizeBytes: true } }),
+      db.knowledgeDocument.aggregate({ _sum: { sizeBytes: true } }),
+      db.automation.count({ where: { isActive: true } }),
+    ]);
   const storageBytes = (media._sum.sizeBytes ?? 0) + (documents._sum.sizeBytes ?? 0);
   return {
     AI_CALLS_PER_MONTH: aiCalls,
@@ -78,6 +74,7 @@ async function currentValues(
     USERS: users,
     WHATSAPP_NUMBERS: numbers,
     STORAGE_MB: Math.round((storageBytes / (1024 * 1024)) * 100) / 100,
+    AUTOMATIONS: automations,
   };
 }
 
@@ -96,7 +93,10 @@ export async function resolveLimits(
     const planValue = planLimits[metric];
     result[metric] = override
       ? { limit: decimalToNumber(override.limitValue), warningPercent: override.warningPercent }
-      : { limit: typeof planValue === 'number' ? planValue : null, warningPercent: 80 };
+      : {
+          limit: typeof planValue === 'number' ? planValue : null,
+          warningPercent: USAGE_ALERT_THRESHOLDS[0],
+        };
   }
   return result;
 }
@@ -109,7 +109,7 @@ export async function getUsageStatus(scope: CompanyScope, now: Date = new Date()
   ]);
   const metrics: MetricStatus[] = USAGE_METRICS.map((metric) => ({
     metric,
-    label: METRIC_LABELS[metric],
+    label: USAGE_METRIC_LABELS[metric],
     current: values[metric],
     limit: limits[metric].limit,
     warningPercent: limits[metric].warningPercent,
@@ -127,6 +127,8 @@ export async function checkAiAllowance(
   scope: CompanyScope,
   now: Date = new Date(),
 ): Promise<{ allowed: boolean; reason?: string }> {
+  const billing = await getBillingAccess(scope, now);
+  if (!billing.allowed) return { allowed: false, reason: billing.reason };
   const status = await getUsageStatus(scope, now);
   for (const metric of ['AI_CALLS_PER_MONTH', 'AI_COST_USD_PER_MONTH'] as const) {
     const item = status.metrics.find((entry) => entry.metric === metric);

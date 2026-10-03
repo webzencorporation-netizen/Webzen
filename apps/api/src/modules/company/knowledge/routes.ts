@@ -1,7 +1,7 @@
 import { KNOWLEDGE_ENTRY_TYPES, ValidationError } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema, paginationQuerySchema } from '../../../lib/http';
+import { idParamSchema, paginationQuerySchema, patchSchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
 import { company } from '../../../plugins/guards';
 import { feature } from '../../features/service';
@@ -44,7 +44,7 @@ export const knowledgeRoutes: FastifyPluginAsyncZod = async (app) => {
     '/entries/:id',
     {
       preValidation: company('knowledge:write'),
-      schema: { params: idParamSchema, body: entryBody.partial() },
+      schema: { params: idParamSchema, body: patchSchema(entryBody) },
     },
     async (request) =>
       knowledge.updateEntry(scopeFromRequest(request), request.params.id, request.body),

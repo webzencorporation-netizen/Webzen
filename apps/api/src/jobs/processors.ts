@@ -1,5 +1,9 @@
 import type { AppContainer } from '../container';
 import { systemScope } from '../lib/scope';
+import { processBillingEvent } from '../modules/billing/service';
+import { deliverWebhook } from '../modules/developer/webhooks';
+import { processEmail } from '../modules/email/service';
+import { checkUsageAlerts } from '../modules/usage/alerts';
 import { recoverStalledReplies } from '../modules/agent/recovery';
 import { handleAgentReplyJob } from '../modules/agent/runner';
 import { summarizeConversation } from '../modules/agent/summary';
@@ -60,6 +64,13 @@ export const JOB_PROCESSORS: { [N in JobName]: { concurrency: number; run: Proce
   'appointments.reminders': { concurrency: 1, run: (c) => emitAppointmentReminders(c) },
   'maintenance.retention': { concurrency: 1, run: (c) => runRetention(c) },
   'agent.recover-stalled': { concurrency: 1, run: (c) => recoverStalledReplies(c) },
+  'usage.alerts': { concurrency: 1, run: (c) => checkUsageAlerts(c) },
+  'email.send': { concurrency: 5, run: (c, data) => processEmail(c, data.emailId) },
+  'billing.event': {
+    concurrency: 2,
+    run: (c, data) => processBillingEvent(c, data.billingEventId),
+  },
+  'webhook.deliver': { concurrency: 10, run: (c, data) => deliverWebhook(c, data) },
 };
 
 export function runJob<N extends JobName>(

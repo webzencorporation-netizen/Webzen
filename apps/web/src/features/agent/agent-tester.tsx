@@ -105,7 +105,7 @@ export function AgentTester() {
                 const debug = message.agentRunId && !inbound ? debugByRun[message.agentRunId] : undefined;
                 return (
                   <div key={message.id} className={cn('my-1.5 flex', inbound ? 'justify-end' : 'justify-start')}>
-                    <div className={cn('max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm', inbound ? 'rounded-br-md bg-slate-800 text-white' : 'rounded-bl-md bg-white text-slate-800')}>
+                    <div className={cn('max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm', inbound ? 'rounded-br-md bg-ink text-white' : 'rounded-bl-md bg-surface text-slate-800')}>
                       <p className="whitespace-pre-wrap">{message.text}</p>
                       {showDebug && debug ? (
                         <p className="mt-1 text-[10px] text-slate-400">
@@ -119,7 +119,7 @@ export function AgentTester() {
             )}
             {send.isPending ? (
               <div className="my-1.5 flex justify-start">
-                <div className="flex gap-1 rounded-2xl bg-white px-4 py-3 shadow-sm" aria-label="Digitando">
+                <div className="flex gap-1 rounded-2xl bg-surface px-4 py-3 shadow-sm" aria-label="Digitando">
                   {[0, 1, 2].map((dot) => <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${dot * 120}ms` }} />)}
                 </div>
               </div>
@@ -147,7 +147,7 @@ export function AgentTester() {
                 {lastDebug.handoff ? <Badge tone="amber">Pediu atendimento humano: {lastDebug.handoff.reason}</Badge> : null}
                 {lastDebug.outcome !== 'answered' && lastDebug.outcome !== 'handoff' ? <Badge tone="red">Resultado: {lastDebug.outcome}</Badge> : null}
                 <div>
-                  <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold uppercase text-muted"><Wrench className="h-3.5 w-3.5" /> Ferramentas</p>
+                  <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-muted"><Wrench className="h-3.5 w-3.5" /> Ferramentas</p>
                   {lastDebug.toolCalls.length === 0 ? <p className="text-xs text-muted">Nenhuma ferramenta usada.</p> : null}
                   <ul className="space-y-2">
                     {lastDebug.toolCalls.map((call, index) => (
@@ -161,7 +161,7 @@ export function AgentTester() {
                   </ul>
                 </div>
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase text-muted">Conhecimento recuperado</p>
+                  <p className="mb-1.5 text-xs font-semibold text-muted">Conhecimento recuperado</p>
                   {lastDebug.knowledge.length === 0 ? <p className="text-xs text-muted">Nenhum trecho relevante.</p> : (
                     <ul className="space-y-1 text-xs">{lastDebug.knowledge.map((hit) => <li key={hit.id} className="flex justify-between gap-2"><span className="truncate">{hit.title}</span><span className="text-muted">{hit.score}</span></li>)}</ul>
                   )}

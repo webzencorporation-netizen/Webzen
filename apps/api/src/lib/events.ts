@@ -3,7 +3,13 @@ import type { AutomationTrigger } from '@botsaas/shared';
 import type { CompanyDataScope } from '../context';
 
 /** Eventos internos (outbox). Automações e notificações reagem a eles de forma assíncrona. */
-export type DomainEventType = AutomationTrigger | 'message.sent' | 'agent.failed' | 'lead.created';
+export type DomainEventType =
+  | AutomationTrigger
+  | 'message.sent'
+  | 'agent.failed'
+  | 'lead.created'
+  | 'conversation.closed'
+  | 'subscription.updated';
 
 /** Persiste na outbox sem acessar Redis; pode participar de uma transação de domínio. */
 export async function recordDomainEvent(

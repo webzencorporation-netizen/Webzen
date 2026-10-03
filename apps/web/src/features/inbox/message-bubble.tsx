@@ -65,9 +65,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       <div
         className={cn(
           'max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%]',
-          inbound && 'rounded-bl-md bg-white text-slate-800',
+          inbound && 'rounded-bl-md bg-surface text-slate-800',
           isAi && 'rounded-br-md bg-brand-50 text-slate-800 ring-1 ring-brand-100',
-          isAgent && 'rounded-br-md bg-slate-800 text-white',
+          isAgent && 'rounded-br-md bg-ink text-white',
           message.status === 'FAILED' && 'ring-2 ring-red-300',
         )}
       >

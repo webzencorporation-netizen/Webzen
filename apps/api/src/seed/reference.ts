@@ -1,66 +1,64 @@
 import { DEFAULT_MODEL_PRICING } from '@botsaas/ai';
 import { systemDb, type Prisma } from '@botsaas/database';
+import { BILLING_INTERVALS, DEFAULT_PLANS, type PlanDefinition } from '@botsaas/shared';
 
-/** Planos iniciais (sem cobrança real — estrutura para a fase SaaS). Valores ajustáveis no painel. */
-export const DEFAULT_PLANS: Prisma.PlanCreateInput[] = [
-  {
-    key: 'STARTER',
-    name: 'Starter',
-    description: 'Um número de WhatsApp, atendente virtual e CRM básico.',
-    priceCents: 29_900,
-    limits: {
-      AI_CALLS_PER_MONTH: 2000,
-      MESSAGES_PER_MONTH: 5000,
-      AI_COST_USD_PER_MONTH: 40,
-      USERS: 3,
-      WHATSAPP_NUMBERS: 1,
-      STORAGE_MB: 1024,
-    },
-    features: ['AI_AGENT', 'CRM'],
-  },
-  {
-    key: 'PRO',
-    name: 'Pro',
-    description: 'Agenda, automações e base de conhecimento com documentos.',
-    priceCents: 59_900,
-    limits: {
-      AI_CALLS_PER_MONTH: 8000,
-      MESSAGES_PER_MONTH: 20000,
-      AI_COST_USD_PER_MONTH: 150,
-      USERS: 10,
-      WHATSAPP_NUMBERS: 2,
-      STORAGE_MB: 5120,
-    },
-    features: ['AI_AGENT', 'CRM', 'CALENDAR', 'AUTOMATIONS', 'KNOWLEDGE_UPLOADS'],
-  },
-  {
-    key: 'BUSINESS',
-    name: 'Business',
-    description: 'Volume alto, relatórios avançados e múltiplos números.',
-    priceCents: 129_900,
-    limits: {
-      AI_CALLS_PER_MONTH: 30000,
-      MESSAGES_PER_MONTH: 80000,
-      AI_COST_USD_PER_MONTH: 600,
-      USERS: 50,
-      WHATSAPP_NUMBERS: 5,
-      STORAGE_MB: 20480,
-    },
-    features: [
-      'AI_AGENT',
-      'CRM',
-      'CALENDAR',
-      'AUTOMATIONS',
-      'ADVANCED_ANALYTICS',
-      'KNOWLEDGE_UPLOADS',
-    ],
-  },
-];
+const STRIPE_PRICE_PATTERN = /^price_[A-Za-z0-9]+$/;
+
+/**
+ * IDs de preço da Stripe por ambiente: `STRIPE_PRICE_<PLANO>_<MONTHLY|YEARLY>`
+ * (ex.: `STRIPE_PRICE_PRO_YEARLY=price_...`). Ausente = mantém o que está no banco.
+ */
+export function stripePriceIdsFromEnv(
+  key: string,
+  source: NodeJS.ProcessEnv = process.env,
+): { stripePriceMonthlyId?: string; stripePriceYearlyId?: string } {
+  const result: { stripePriceMonthlyId?: string; stripePriceYearlyId?: string } = {};
+  for (const interval of BILLING_INTERVALS) {
+    const name = `STRIPE_PRICE_${key}_${interval}`;
+    const value = source[name]?.trim();
+    if (!value) continue;
+    if (!STRIPE_PRICE_PATTERN.test(value)) {
+      throw new Error(`${name} inválido: esperado um ID de preço da Stripe (price_...).`);
+    }
+    if (interval === 'MONTHLY') result.stripePriceMonthlyId = value;
+    else result.stripePriceYearlyId = value;
+  }
+  return result;
+}
+
+function catalogFields(plan: PlanDefinition) {
+  return {
+    name: plan.name,
+    tagline: plan.tagline,
+    description: plan.description,
+    priceMonthlyCents: plan.priceMonthlyCents,
+    priceYearlyCents: plan.priceYearlyCents,
+    limits: plan.limits as Prisma.InputJsonValue,
+    features: plan.features,
+    highlight: plan.highlight,
+    sortOrder: plan.sortOrder,
+  };
+}
+
+export interface ReferenceSeedOptions {
+  /**
+   * Sobrescreve preços, limites e recursos dos planos existentes com o catálogo do código
+   * (`DEFAULT_PLANS`). Sem a opção, planos existentes não mudam — preserva ajustes feitos
+   * pelo administrador no painel.
+   */
+  syncPlans?: boolean;
+  env?: NodeJS.ProcessEnv;
+}
 
 /** Dados de referência idempotentes (planos e preços de modelos). Seguro em qualquer ambiente. */
-export async function seedReferenceData(): Promise<void> {
+export async function seedReferenceData(options: ReferenceSeedOptions = {}): Promise<void> {
   for (const plan of DEFAULT_PLANS) {
-    await systemDb.plan.upsert({ where: { key: plan.key }, create: plan, update: {} });
+    const priceIds = stripePriceIdsFromEnv(plan.key, options.env);
+    await systemDb.plan.upsert({
+      where: { key: plan.key },
+      create: { key: plan.key, ...catalogFields(plan), ...priceIds },
+      update: { ...(options.syncPlans ? catalogFields(plan) : {}), ...priceIds },
+    });
   }
   for (const [model, price] of Object.entries(DEFAULT_MODEL_PRICING)) {
     await systemDb.modelPricing.upsert({

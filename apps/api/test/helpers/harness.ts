@@ -8,12 +8,13 @@ import {
   type PlatformRole,
 } from '@botsaas/database';
 import { truncateAllTables } from '@botsaas/database/testing';
-import { MemoryObjectStorage, MockSpeechToText } from '@botsaas/integrations';
+import { MemoryEmailSender, MemoryObjectStorage, MockSpeechToText } from '@botsaas/integrations';
 import type { BusinessTemplateKey } from '@botsaas/shared';
 import { MockMessagingProvider } from '@botsaas/whatsapp';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import pino from 'pino';
 import { buildApp } from '../../src/app';
+import { MockBillingProvider } from '../../src/modules/billing/mock';
 import { createContainer, type AppContainer } from '../../src/container';
 import { createCompany } from '../../src/modules/platform/companies.service';
 import { InMemoryJobQueue } from '../../src/queues/memory';
@@ -28,6 +29,8 @@ export interface TestHarness {
   ai: MockAIProvider;
   messaging: MockMessagingProvider;
   storage: MemoryObjectStorage;
+  email: MemoryEmailSender;
+  billing: MockBillingProvider;
   reset(): Promise<void>;
   close(): Promise<void>;
 }
@@ -39,11 +42,13 @@ export async function createTestHarness(): Promise<TestHarness> {
   const ai = new MockAIProvider();
   const messaging = new MockMessagingProvider();
   const storage = new MemoryObjectStorage();
+  const email = new MemoryEmailSender();
+  const billing = new MockBillingProvider();
   const container = createContainer({
     env,
     logger: pino({ level: 'silent' }),
     queue,
-    providers: { ai, messaging, storage, speechToText: new MockSpeechToText() },
+    providers: { ai, messaging, storage, email, billing, speechToText: new MockSpeechToText() },
   });
   const app = await buildApp(container);
   await app.ready();
@@ -54,6 +59,8 @@ export async function createTestHarness(): Promise<TestHarness> {
     ai,
     messaging,
     storage,
+    email,
+    billing,
     async reset() {
       await truncateAllTables(getSystemDb());
       await seedReferenceData();
@@ -61,6 +68,8 @@ export async function createTestHarness(): Promise<TestHarness> {
       ai.reset();
       messaging.reset();
       storage.objects.clear();
+      email.reset();
+      billing.reset();
     },
     async close() {
       await app.close();
@@ -80,6 +89,7 @@ export async function createUser(input: {
       name: input.name ?? input.email.split('@')[0] ?? 'Usuário',
       passwordHash: await hashPassword(input.password ?? DEFAULT_PASSWORD),
       platformRole: input.platformRole ?? null,
+      emailVerifiedAt: new Date(),
     },
   });
 }

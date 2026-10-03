@@ -1,13 +1,11 @@
+import { COMPANY_ROLE_LABELS } from '@botsaas/shared';
+
 /**
  * Textos de interface em pt-BR. Rótulos de enums centralizados aqui para facilitar i18n futuro
  * (trocar este módulo por um carregador de idiomas).
  */
 export const roleLabels: Record<string, string> = {
-  COMPANY_OWNER: 'Proprietário',
-  COMPANY_ADMIN: 'Administrador',
-  MANAGER: 'Gerente',
-  ATTENDANT: 'Atendente',
-  VIEWER: 'Somente leitura',
+  ...COMPANY_ROLE_LABELS,
   PLATFORM_OWNER: 'Dono da plataforma',
   PLATFORM_ADMIN: 'Admin da plataforma',
 };
@@ -93,13 +91,7 @@ export const automationTriggerLabels: Record<string, string> = {
   'appointment.reminder_due': 'Consulta amanhã (lembrete)',
 };
 
-export const featureLabels: Record<string, string> = {
-  AI_AGENT: 'Atendente virtual',
-  CRM: 'CRM',
-  CALENDAR: 'Agenda',
-  AUTOMATIONS: 'Automações',
-  ADVANCED_ANALYTICS: 'Relatórios avançados',
-  KNOWLEDGE_UPLOADS: 'Upload de documentos',
-};
+/** Rótulos dos recursos e das métricas vêm do catálogo central de planos (@botsaas/shared). */
+export { FEATURE_LABELS as featureLabels, USAGE_METRIC_LABELS as usageMetricLabels } from '@botsaas/shared';
 
 export const weekdayLabels = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];

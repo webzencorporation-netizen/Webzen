@@ -3,7 +3,7 @@ import { useId } from 'react';
 import { cn } from '@/lib/cn';
 
 const control =
-  'w-full rounded-lg border border-border bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-50 disabled:text-slate-500';
+  'w-full rounded-lg border border-border bg-surface px-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-50 disabled:text-slate-500';
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(control, 'h-9', className)} {...props} />;

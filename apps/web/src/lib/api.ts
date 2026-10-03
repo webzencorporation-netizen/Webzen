@@ -13,6 +13,10 @@ export class ApiError extends Error {
   }
 }
 
+/** Evento disparado quando o plano barra uma ação (limite ou recurso fora do plano). */
+export const PLAN_LIMIT_EVENT = 'webzen:plan-limit';
+const PLAN_LIMIT_CODES = new Set(['LIMIT_REACHED', 'FEATURE_DISABLED']);
+
 type Query = Record<string, string | number | boolean | null | undefined>;
 
 function withQuery(path: string, query?: Query): string {
@@ -39,6 +43,10 @@ async function request<T>(method: string, path: string, options: { body?: unknow
   const payload: unknown = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text();
   if (!response.ok) {
     const error = (payload as ApiErrorBody | null)?.error;
+    // Só ações (não leituras): uma tela que consulta um recurso fora do plano não abre aviso sozinha.
+    if (method !== 'GET' && error && PLAN_LIMIT_CODES.has(error.code) && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<string>(PLAN_LIMIT_EVENT, { detail: error.message }));
+    }
     throw new ApiError(error?.message ?? 'Não foi possível completar a ação.', response.status, error?.code, error?.details);
   }
   return payload as T;

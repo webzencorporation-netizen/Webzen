@@ -232,13 +232,85 @@ enum UsageMetric {
   USERS
   WHATSAPP_NUMBERS
   STORAGE_MB
+  AUTOMATIONS
 }
 
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
   PAST_DUE
+  UNPAID
+  INCOMPLETE
+  PAUSED
   CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  BILLING
+  TECHNICAL
+  WHATSAPP
+  AI
+  ACCOUNT
+  OTHER
+}
+
+enum FeedbackCategory {
+  BUG
+  SUGGESTION
+  QUESTION
+  OTHER
+}
+
+enum BillingEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
 }
 
 enum FeatureFlagKey {
@@ -248,6 +320,12 @@ enum FeatureFlagKey {
   AUTOMATIONS
   ADVANCED_ANALYTICS
   KNOWLEDGE_UPLOADS
+  CALENDAR_SYNC
+  API_ACCESS
+  WEBHOOKS
+  PRIORITY_SUPPORT
+  REMOVE_BRANDING
+  WHITE_LABEL
 }
 
 enum CustomFieldType {
@@ -291,12 +369,18 @@ model User {
   platformRole       PlatformRole?
   isActive           Boolean       @default(true)
   mustChangePassword Boolean       @default(false)
+  /// Um teste grátis por pessoa: preenchido quando o usuário inicia o primeiro trial.
+  trialUsedAt        DateTime?     @db.Timestamptz(6)
+  /// Nulo = e-mail ainda não confirmado (cadastro público). Contas criadas pela plataforma
+  /// ou por convite já nascem confirmadas.
+  emailVerifiedAt    DateTime?     @db.Timestamptz(6)
   lastLoginAt        DateTime?     @db.Timestamptz(6)
   createdAt          DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime      @updatedAt @db.Timestamptz(6)
 
   memberships       CompanyMember[]
   sessions          Session[]
+  authTokens        AuthToken[]
   assignedContacts  Contact[]          @relation("ContactAssignee")
   assignedConvs     Conversation[]     @relation("ConversationAssignee")
   assignedLeads     Lead[]             @relation("LeadAssignee")
@@ -326,34 +410,38 @@ model Session {
 }
 
 model Company {
-  id                 String              @id @default(uuid(7)) @db.Uuid
-  name               String
-  slug               String              @unique
-  templateKey        BusinessTemplateKey @default(GENERAL)
-  status             CompanyStatus       @default(ONBOARDING)
-  segment            String?
-  legalName          String?
-  document           String?
-  phone              String?
-  email              String?
-  website            String?
-  description        String?
+  id                   String              @id @default(uuid(7)) @db.Uuid
+  name                 String
+  slug                 String              @unique
+  templateKey          BusinessTemplateKey @default(GENERAL)
+  status               CompanyStatus       @default(ONBOARDING)
+  segment              String?
+  legalName            String?
+  document             String?
+  phone                String?
+  email                String?
+  website              String?
+  description          String?
   /// { street, number, complement, district, city, state, zip, country, mapsUrl }
-  address            Json?
-  timezone           String              @default("America/Sao_Paulo")
-  locale             String              @default("pt-BR")
-  currency           String              @default("BRL")
+  address              Json?
+  timezone             String              @default("America/Sao_Paulo")
+  locale               String              @default("pt-BR")
+  currency             String              @default("BRL")
   /// Horário semanal: [{ weekday: 0-6, open: "08:00", close: "18:00", breaks: [{start,end}] }]
-  businessHours      Json?
+  businessHours        Json?
   /// Etapas do onboarding concluídas (chaves) e etapa atual.
-  onboardingState    Json?
-  onboardingDoneAt   DateTime?           @db.Timestamptz(6)
+  onboardingState      Json?
+  onboardingDoneAt     DateTime?           @db.Timestamptz(6)
   /// Retenção de dados definida pela empresa (LGPD). Nulo = sem expurgo automático.
   messageRetentionDays Int?
-  activatedAt        DateTime?           @db.Timestamptz(6)
-  suspendedReason    String?
-  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+  /// Código de indicação informado no cadastro (programa de indicação futuro).
+  signupReferralCode   String?
+  /// Cliente no gateway de cobrança (Stripe `cus_...`).
+  billingCustomerId    String?             @unique
+  activatedAt          DateTime?           @db.Timestamptz(6)
+  suspendedReason      String?
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(6)
 
   members            CompanyMember[]
   holidays           Holiday[]
@@ -384,6 +472,15 @@ model Company {
   usageRecords       UsageRecord[]
   usageLimits        UsageLimit[]
   subscription       Subscription?
+  invoices           Invoice[]
+  invitations        Invitation[]
+  apiKeys            ApiKey[]
+  webhookEndpoints   WebhookEndpoint[]
+  webhookDeliveries  WebhookDelivery[]
+  supportTickets     SupportTicket[]
+  ticketMessages     SupportTicketMessage[]
+  feedback           Feedback[]
+  billingEvents      BillingEvent[]
   featureFlags       CompanyFeatureFlag[]
   automations        Automation[]
   automationRuns     AutomationRun[]
@@ -702,18 +799,18 @@ model ContactMemory {
 }
 
 model CustomFieldDefinition {
-  id              String            @id @default(uuid(7)) @db.Uuid
-  companyId       String            @db.Uuid
-  target          CustomFieldTarget
-  key             String
-  label           String
-  type            CustomFieldType   @default(TEXT)
-  options         String[]          @default([])
+  id             String            @id @default(uuid(7)) @db.Uuid
+  companyId      String            @db.Uuid
+  target         CustomFieldTarget
+  key            String
+  label          String
+  type           CustomFieldType   @default(TEXT)
+  options        String[]          @default([])
   /// O agente deve tentar coletar este campo naturalmente durante a conversa.
-  collectByAgent  Boolean           @default(false)
-  agentHint       String?
-  position        Int               @default(0)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  collectByAgent Boolean           @default(false)
+  agentHint      String?
+  position       Int               @default(0)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -894,18 +991,18 @@ model ConversationSummary {
 }
 
 model Handoff {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  companyId      String           @db.Uuid
-  conversationId String           @db.Uuid
-  requestedBy    HandoffRequester
-  requestedById  String?          @db.Uuid
-  reason         String
-  acceptedById   String?          @db.Uuid
-  acceptedAt     DateTime?        @db.Timestamptz(6)
-  resolvedAt     DateTime?        @db.Timestamptz(6)
+  id                String           @id @default(uuid(7)) @db.Uuid
+  companyId         String           @db.Uuid
+  conversationId    String           @db.Uuid
+  requestedBy       HandoffRequester
+  requestedById     String?          @db.Uuid
+  reason            String
+  acceptedById      String?          @db.Uuid
+  acceptedAt        DateTime?        @db.Timestamptz(6)
+  resolvedAt        DateTime?        @db.Timestamptz(6)
   /// Resumo do atendimento humano gerado ao devolver para a IA.
   resolutionSummary String?
-  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
 
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -919,20 +1016,20 @@ model Handoff {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Service {
-  id              String   @id @default(uuid(7)) @db.Uuid
-  companyId       String   @db.Uuid
-  name            String
-  description     String?
-  category        String?
-  priceCents      Int?
+  id               String   @id @default(uuid(7)) @db.Uuid
+  companyId        String   @db.Uuid
+  name             String
+  description      String?
+  category         String?
+  priceCents       Int?
   /// Ex.: "a partir de", "sob avaliação".
-  priceNote       String?
+  priceNote        String?
   /// O agente só informa preço quando autorizado.
-  priceVisibleToAi Boolean @default(true)
-  durationMinutes Int?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  priceVisibleToAi Boolean  @default(true)
+  durationMinutes  Int?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   appointments Appointment[]
@@ -998,7 +1095,7 @@ model KnowledgeEntry {
   documentId   String?                  @db.Uuid
   chunkIndex   Int?
   /// Coluna gerada (tsvector português + unaccent) — definida na migração SQL.
-  searchVector Unsupported("tsvector")?    @default(dbgenerated("knowledge_search_vector(title, content, tags)"))
+  searchVector Unsupported("tsvector")? @default(dbgenerated("knowledge_search_vector(title, content, tags)"))
   createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime                 @updatedAt @db.Timestamptz(6)
 
@@ -1095,18 +1192,30 @@ model UsageRecord {
 }
 
 model Plan {
-  id          String   @id @default(uuid(7)) @db.Uuid
-  key         String   @unique
-  name        String
-  description String?
-  priceCents  Int      @default(0)
-  currency    String   @default("BRL")
-  isActive    Boolean  @default(true)
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  key                  String           @unique
+  name                 String
+  /// Frase curta do card de preços.
+  tagline              String?
+  description          String?
+  /// Preço mensal em centavos (BRL). O preço cobrado vem sempre daqui/da Stripe, nunca do navegador.
+  priceMonthlyCents    Int              @default(0)
+  /// Preço anual em centavos; nulo = sem opção anual.
+  priceYearlyCents     Int?
+  currency             String           @default("BRL")
+  /// IDs oficiais dos preços na Stripe (modo teste ou produção, conforme o ambiente).
+  stripePriceMonthlyId String?          @unique
+  stripePriceYearlyId  String?          @unique
+  isActive             Boolean          @default(true)
+  /// Exibido na página pública de preços e no checkout.
+  isPublic             Boolean          @default(true)
+  highlight            Boolean          @default(false)
+  sortOrder            Int              @default(0)
   /// { "AI_CALLS_PER_MONTH": 5000, ... } — nulo/ausente = ilimitado.
-  limits      Json
-  features    FeatureFlagKey[] @default([])
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  limits               Json
+  features             FeatureFlagKey[] @default([])
+  createdAt            DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(6)
 
   subscriptions Subscription[]
 }
@@ -1116,28 +1225,89 @@ model Subscription {
   companyId          String             @unique @db.Uuid
   planId             String             @db.Uuid
   status             SubscriptionStatus @default(ACTIVE)
+  interval           BillingInterval    @default(MONTHLY)
   currentPeriodStart DateTime           @db.Timestamptz(6)
   currentPeriodEnd   DateTime?          @db.Timestamptz(6)
-  /// Reservado para o provedor de cobrança futuro.
-  externalId         String?
+  /// ID da assinatura no gateway (Stripe `sub_...`). Nulo = assinatura gerida manualmente.
+  externalId         String?            @unique
   cancelAt           DateTime?          @db.Timestamptz(6)
+  /// Cancelamento agendado para o fim do período (o cliente pode reativar até lá).
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?          @db.Timestamptz(6)
+  trialEndsAt        DateTime?          @db.Timestamptz(6)
+  /// Último evento do gateway aplicado (ordem dos webhooks).
+  externalUpdatedAt  DateTime?          @db.Timestamptz(6)
   createdAt          DateTime           @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+model Invoice {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  companyId       String           @db.Uuid
+  /// ID da fatura no gateway (Stripe `in_...`).
+  externalId      String           @unique
+  number          String?
+  status          InvoiceStatus
+  currency        String           @default("BRL")
+  amountDueCents  Int
+  amountPaidCents Int              @default(0)
+  discountCents   Int              @default(0)
+  planKey         String?
+  interval        BillingInterval?
+  periodStart     DateTime?        @db.Timestamptz(6)
+  periodEnd       DateTime?        @db.Timestamptz(6)
+  hostedUrl       String?
+  pdfUrl          String?
+  /// ID do pagamento (Stripe `pi_...`), exibido como ID da transação.
+  paymentId       String?
+  paidAt          DateTime?        @db.Timestamptz(6)
+  issuedAt        DateTime         @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, issuedAt])
+}
+
+/// Eventos recebidos do gateway de cobrança. A unicidade (provider, externalId) torna o webhook idempotente.
+model BillingEvent {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  provider    String
+  externalId  String
+  type        String
+  livemode    Boolean
+  status      BillingEventStatus @default(RECEIVED)
+  companyId   String?            @db.Uuid
+  /// ID do objeto principal do evento (assinatura, fatura, checkout). Sem payload: evita guardar dados pessoais.
+  objectId    String?
+  attempts    Int                @default(0)
+  error       String?
+  receivedAt  DateTime           @default(now()) @db.Timestamptz(6)
+  processedAt DateTime?          @db.Timestamptz(6)
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalId])
+  @@index([companyId, receivedAt])
+  @@index([status, receivedAt])
 }
 
 /// Sobrescrita de limite por empresa (prevalece sobre o plano).
 model UsageLimit {
-  id              String      @id @default(uuid(7)) @db.Uuid
-  companyId       String      @db.Uuid
-  metric          UsageMetric
+  id             String      @id @default(uuid(7)) @db.Uuid
+  companyId      String      @db.Uuid
+  metric         UsageMetric
   /// Nulo = ilimitado.
-  limitValue      Decimal?    @db.Decimal(14, 4)
-  warningPercent  Int         @default(80)
-  createdAt       DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
+  limitValue     Decimal?    @db.Decimal(14, 4)
+  warningPercent Int         @default(80)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1284,4 +1454,194 @@ model ErrorLog {
 
   @@index([companyId, createdAt])
   @@index([createdAt])
+}
+
+/// Tokens de uso único enviados por e-mail (confirmação e redefinição de senha). Só o hash é guardado.
+model AuthToken {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  userId    String        @db.Uuid
+  type      AuthTokenType
+  tokenHash String        @unique
+  /// E-mail para o qual o token foi emitido: se o e-mail do usuário mudar, o token deixa de valer.
+  email     String
+  expiresAt DateTime      @db.Timestamptz(6)
+  usedAt    DateTime?     @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+}
+
+/// Convite para a equipe de uma empresa. Token de uso único (só o hash), com prazo e revogável.
+model Invitation {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  companyId      String      @db.Uuid
+  email          String
+  role           CompanyRole
+  tokenHash      String      @unique
+  invitedById    String?     @db.Uuid
+  expiresAt      DateTime    @db.Timestamptz(6)
+  acceptedAt     DateTime?   @db.Timestamptz(6)
+  acceptedUserId String?     @db.Uuid
+  revokedAt      DateTime?   @db.Timestamptz(6)
+  lastSentAt     DateTime    @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([email])
+}
+
+/// Fila de e-mails transacionais. O corpo é apagado depois do envio (pode conter links com token).
+model EmailOutbox {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  toEmail   String
+  template  String
+  subject   String
+  html      String?
+  text      String?
+  status    EmailStatus @default(PENDING)
+  attempts  Int         @default(0)
+  lastError String?
+  sentAt    DateTime?   @db.Timestamptz(6)
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+}
+
+/// Chave de API da empresa (API pública v1). Só o SHA-256 é guardado; a chave aparece uma vez.
+model ApiKey {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  companyId   String    @db.Uuid
+  name        String
+  /// Ex.: "wz_live_" — identifica o ambiente sem revelar a chave.
+  prefix      String
+  keyHash     String    @unique
+  /// Últimos 4 caracteres, para exibir "wz_live_••••4k82".
+  last4       String
+  /// Escopos da API pública (ex.: contacts:read, messages:send).
+  scopes      String[]
+  createdById String?   @db.Uuid
+  lastUsedAt  DateTime? @db.Timestamptz(6)
+  lastUsedIp  String?
+  revokedAt   DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+}
+
+/// Destino de webhooks de saída da empresa. O segredo de assinatura é cifrado (SecretBox).
+model WebhookEndpoint {
+  id                  String    @id @default(uuid(7)) @db.Uuid
+  companyId           String    @db.Uuid
+  url                 String
+  description         String?
+  events              String[]
+  secretEncrypted     String
+  isActive            Boolean   @default(true)
+  /// Falhas finais seguidas; muitas desativam o endpoint automaticamente.
+  consecutiveFailures Int       @default(0)
+  disabledReason      String?
+  lastDeliveryAt      DateTime? @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([companyId])
+}
+
+/// Uma entrega de evento para um endpoint. Única por (endpoint, evento): retry não duplica.
+model WebhookDelivery {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  companyId      String                @db.Uuid
+  endpointId     String                @db.Uuid
+  event          String
+  /// ID estável do evento (o receptor usa para deduplicar).
+  eventId        String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  responseStatus Int?
+  lastError      String?
+  deliveredAt    DateTime?             @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(6)
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventId])
+  @@index([companyId, createdAt])
+  @@index([endpointId, createdAt])
+}
+
+/// Chamado de suporte aberto por uma empresa e atendido pela equipe WebZen.
+model SupportTicket {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  companyId       String         @db.Uuid
+  /// Número legível para o cliente citar ("chamado #1042").
+  number          Int            @unique @default(autoincrement())
+  subject         String
+  category        TicketCategory
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  /// Plano com suporte prioritário no momento da abertura (ordena a fila da plataforma).
+  prioritySupport Boolean        @default(false)
+  createdById     String?        @db.Uuid
+  assignedToId    String?        @db.Uuid
+  lastMessageAt   DateTime       @default(now()) @db.Timestamptz(6)
+  resolvedAt      DateTime?      @db.Timestamptz(6)
+  closedAt        DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  company  Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  @@index([companyId, createdAt])
+  @@index([status, prioritySupport, lastMessageAt])
+}
+
+model SupportTicketMessage {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  companyId    String   @db.Uuid
+  ticketId     String   @db.Uuid
+  authorUserId String?  @db.Uuid
+  authorName   String
+  /// Mensagem da equipe WebZen (true) ou do cliente (false).
+  fromStaff    Boolean  @default(false)
+  /// Nota interna da equipe WebZen: nunca aparece para o cliente.
+  isInternal   Boolean  @default(false)
+  body         String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ticket  SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+/// Feedback rápido enviado de dentro do painel.
+model Feedback {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  companyId String           @db.Uuid
+  userId    String?          @db.Uuid
+  category  FeedbackCategory
+  message   String
+  /// Página do painel de onde veio (caminho, sem query string).
+  page      String?
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([companyId, createdAt])
 }

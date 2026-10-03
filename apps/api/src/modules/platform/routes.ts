@@ -13,18 +13,35 @@ import {
   FEATURE_FLAGS,
   NotFoundError,
   PLATFORM_ROLES,
+  TICKET_PRIORITIES,
+  TICKET_STATUSES,
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import type { Actor } from '../../context';
 import { auditPlatform } from '../../lib/audit';
-import { idParamSchema, paginationQuerySchema } from '../../lib/http';
+import {
+  idParamSchema,
+  paginated,
+  paginationQuerySchema,
+  patchSchema,
+  toSkipTake,
+} from '../../lib/http';
 import { systemScope } from '../../lib/scope';
 import { periodStart } from '../../lib/time';
 import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
+import { replayBillingEvent } from '../billing/service';
+import { getCompanyEconomics, getSaasMetrics } from './metrics.service';
+import {
+  getTicketForStaff,
+  listAllTickets,
+  listFeedback,
+  staffReply,
+  updateTicketForStaff,
+} from './support.service';
 import { resolveRange, usageBreakdown } from '../usage/breakdown';
 import { costByCompany, summarizeAiUsageByPeriod } from '../usage/report';
 import {
@@ -53,11 +70,13 @@ const timezoneSchema = z.string().refine((value) => {
   }
 }, 'Fuso horário inválido');
 
-const metricSchema = z
-  .enum(USAGE_METRICS as [string, ...string[]])
-  .transform((value) => value as (typeof USAGE_METRICS)[number]);
+const metricSchema = z.enum(USAGE_METRICS);
 
-const planLimitsSchema = z.record(z.string(), z.number().nonnegative().nullable());
+// Só métricas conhecidas: uma chave digitada errada não pode virar "ilimitado" em silêncio.
+const planLimitsSchema = z.partialRecord(
+  z.enum(USAGE_METRICS),
+  z.number().nonnegative().nullable(),
+);
 
 function actorOf(request: Parameters<typeof requireAuthContext>[0]): Actor {
   const auth = requireAuthContext(request);
@@ -289,16 +308,31 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
   const planBody = z.object({
     key: z.string().regex(/^[A-Z0-9_]{2,30}$/),
     name: z.string().min(2).max(60),
+    tagline: z.string().max(160).nullish(),
     description: z.string().max(300).nullish(),
-    priceCents: z.number().int().nonnegative(),
-    isActive: z.boolean().default(true),
+    priceMonthlyCents: z.number().int().nonnegative(),
+    priceYearlyCents: z.number().int().nonnegative().nullish(),
+    stripePriceMonthlyId: z
+      .string()
+      .regex(/^price_[A-Za-z0-9]+$/)
+      .nullish(),
+    stripePriceYearlyId: z
+      .string()
+      .regex(/^price_[A-Za-z0-9]+$/)
+      .nullish(),
+    // Sem .default(): no Zod 4, `.partial()` mantém o default e um PATCH parcial
+    // reativaria um plano desativado. Os padrões de criação ficam no banco.
+    isActive: z.boolean().optional(),
+    isPublic: z.boolean().optional(),
+    highlight: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(10_000).optional(),
     limits: planLimitsSchema,
     features: z.array(z.enum(FEATURE_FLAGS)),
   });
 
   app.get('/plans', { preValidation: platform('platform:companies:read') }, async () => {
     const plans = await systemDb.plan.findMany({
-      orderBy: { priceCents: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
       include: { _count: { select: { subscriptions: true } } },
     });
     return plans.map(({ _count, ...plan }) => ({ ...plan, subscriptions: _count.subscriptions }));
@@ -327,7 +361,7 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     '/plans/:id',
     {
       preValidation: platform('platform:plans:write'),
-      schema: { params: idParamSchema, body: planBody.omit({ key: true }).partial() },
+      schema: { params: idParamSchema, body: patchSchema(planBody.omit({ key: true })) },
     },
     async (request) => {
       const { limits, ...rest } = request.body;
@@ -544,6 +578,7 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
               passwordHash: await hashPassword(request.body.password),
               platformRole: request.body.platformRole,
               mustChangePassword: true,
+              emailVerifiedAt: new Date(),
             },
           });
       await auditPlatform(actorOf(request), {
@@ -575,5 +610,104 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       });
       return { ok: true };
     },
+  );
+
+  // ── Cobrança: eventos do gateway ──────────────────────────────────────────
+  app.get(
+    '/billing/events',
+    {
+      preValidation: platform('platform:usage:read'),
+      schema: {
+        querystring: paginationQuerySchema.extend({
+          status: z.enum(['RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED']).optional(),
+        }),
+      },
+    },
+    async (request) => {
+      const where = request.query.status ? { status: request.query.status } : {};
+      const [items, total] = await Promise.all([
+        systemDb.billingEvent.findMany({
+          where,
+          orderBy: { receivedAt: 'desc' },
+          ...toSkipTake(request.query),
+          include: { company: { select: { id: true, name: true } } },
+        }),
+        systemDb.billingEvent.count({ where }),
+      ]);
+      return paginated(items, total, request.query);
+    },
+  );
+
+  app.post(
+    '/billing/events/:id/replay',
+    { preValidation: platform('platform:companies:write'), schema: { params: idParamSchema } },
+    async (request) => {
+      await replayBillingEvent(container, actorOf(request), request.params.id);
+      return { ok: true };
+    },
+  );
+
+  // ── Suporte: fila de chamados e feedback ─────────────────────────────────
+  const supportGuard = platform('platform:support:manage');
+  app.get(
+    '/support/tickets',
+    {
+      preValidation: supportGuard,
+      schema: {
+        querystring: paginationQuerySchema.extend({
+          status: z.enum(TICKET_STATUSES).optional(),
+          companyId: z.uuid().optional(),
+          search: z.string().max(100).optional(),
+        }),
+      },
+    },
+    async (request) => listAllTickets(request.query),
+  );
+  app.get(
+    '/support/tickets/:id',
+    { preValidation: supportGuard, schema: { params: idParamSchema } },
+    async (request) => getTicketForStaff(request.params.id),
+  );
+  app.post(
+    '/support/tickets/:id/messages',
+    {
+      preValidation: supportGuard,
+      schema: {
+        params: idParamSchema,
+        body: z.object({
+          body: z.string().trim().min(2).max(5000),
+          internal: z.boolean().default(false),
+        }),
+      },
+    },
+    async (request) => staffReply(container, actorOf(request), request.params.id, request.body),
+  );
+  app.patch(
+    '/support/tickets/:id',
+    {
+      preValidation: supportGuard,
+      schema: {
+        params: idParamSchema,
+        body: z.object({
+          status: z.enum(TICKET_STATUSES).optional(),
+          priority: z.enum(TICKET_PRIORITIES).optional(),
+          assignedToMe: z.boolean().optional(),
+        }),
+      },
+    },
+    async (request) => updateTicketForStaff(actorOf(request), request.params.id, request.body),
+  );
+  app.get(
+    '/support/feedback',
+    { preValidation: supportGuard, schema: { querystring: paginationQuerySchema } },
+    async (request) => listFeedback(request.query),
+  );
+
+  // ── Indicadores do negócio ────────────────────────────────────────────────
+  app.get('/metrics/saas', { preValidation: platform('platform:usage:read') }, async () =>
+    getSaasMetrics(),
+  );
+  app.get('/metrics/economics', { preValidation: platform('platform:usage:read') }, async () =>
+    getCompanyEconomics(),
   );
 };

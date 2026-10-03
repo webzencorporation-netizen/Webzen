@@ -151,7 +151,7 @@ export function CalendarPage() {
         description={`Horários exibidos no fuso da empresa (${timezone}).`}
         actions={
           <>
-            <div className="flex items-center rounded-lg border border-border bg-white">
+            <div className="flex items-center rounded-lg border border-border bg-surface">
               <Button variant="ghost" size="icon" onClick={() => setWeekStart(new Date(weekStart.getTime() - 7 * 86_400_000))} aria-label="Semana anterior"><ChevronLeft className="h-4 w-4" /></Button>
               <button className="px-2 text-sm font-medium" onClick={() => setWeekStart(startOfWeek(new Date()))}>Hoje</button>
               <Button variant="ghost" size="icon" onClick={() => setWeekStart(new Date(weekStart.getTime() + 7 * 86_400_000))} aria-label="Próxima semana"><ChevronRight className="h-4 w-4" /></Button>
@@ -169,7 +169,7 @@ export function CalendarPage() {
             const items = (appointments.data ?? []).filter((item) => dayKey(item.startAt) === key);
             return (
               <Card key={key} className={cn('min-h-40 p-2', key === today && 'ring-2 ring-brand-300')}>
-                <p className="mb-2 px-1 text-xs font-semibold uppercase text-muted">
+                <p className="mb-2 px-1 text-xs font-semibold text-muted">
                   {new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: timezone }).format(day)}
                 </p>
                 <div className="space-y-2">
@@ -182,7 +182,7 @@ export function CalendarPage() {
                         <Badge tone={STATUS_TONE[item.status] ?? 'neutral'} className="mt-1">{appointmentStatusLabels[item.status]}</Badge>
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Portal>
-                        <DropdownMenu.Content sideOffset={4} className="z-50 w-56 rounded-xl border border-border bg-white p-1.5 shadow-xl">
+                        <DropdownMenu.Content sideOffset={4} className="z-50 w-56 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
                           <DropdownMenu.Item asChild className={menuItem}><Link href={`/app/contacts/${item.contact.id}`}>Abrir contato</Link></DropdownMenu.Item>
                           {can('calendar:write') && item.status !== 'CANCELLED' ? (
                             <>

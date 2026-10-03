@@ -5,15 +5,18 @@ import {
   permissionsForRole,
   platformRoleHasPermission,
   roleHasPermission,
+  type ApiScope,
   type CompanyPermission,
   type PlatformPermission,
 } from '@botsaas/shared';
+import { authenticateApiKey } from '../modules/developer/api-keys';
 import type { FastifyRequest } from 'fastify';
 import type { AuthContext, TenantContext } from '../context';
 
 /** Metadados de cada guard, lidos pelo inventário de endpoints (plugins/route-inventory.ts). */
 export type GuardInfo =
   | { kind: 'authenticated' }
+  | { kind: 'apiKey'; scope: ApiScope }
   | { kind: 'platform'; permission: PlatformPermission }
   | { kind: 'company'; permission: CompanyPermission | null };
 
@@ -48,6 +51,27 @@ export const authenticated = markGuard(
   },
   { kind: 'authenticated' },
 );
+
+/**
+ * preValidation da API pública v1: autentica a chave (Bearer) e exige o escopo. Nunca usa
+ * o cookie de sessão — por isso as rotas v1 não precisam de proteção CSRF.
+ */
+export function apiKey(scope: ApiScope) {
+  return markGuard(
+    async (request: FastifyRequest): Promise<void> => {
+      const context = await authenticateApiKey(
+        request.server.container,
+        request.headers.authorization,
+        request.ip,
+      );
+      if (!context.scopes.has(scope)) {
+        throw new AuthorizationError(`A chave não tem o escopo "${scope}".`);
+      }
+      request.apiKeyContext = context;
+    },
+    { kind: 'apiKey', scope },
+  );
+}
 
 /** preHandler: exige papel de plataforma com a permissão informada. */
 export function platform(permission: PlatformPermission) {

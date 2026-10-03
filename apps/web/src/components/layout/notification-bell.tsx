@@ -40,7 +40,7 @@ export function NotificationBell() {
         ) : null}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={8} className="z-50 w-[min(92vw,360px)] rounded-xl border border-border bg-white shadow-xl">
+        <DropdownMenu.Content align="end" sideOffset={8} className="z-50 w-[min(92vw,360px)] rounded-xl border border-border bg-surface shadow-xl">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <p className="text-sm font-semibold">Notificações</p>
             <button className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50" disabled={!data?.unread} onClick={() => markAll.mutate()}>
