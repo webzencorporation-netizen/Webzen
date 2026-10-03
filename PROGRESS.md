@@ -229,7 +229,7 @@ Próximos passos, nesta ordem:
 
 1. ~~Retenção por plano~~ — avaliada e descartada (D-044: apagaria dados de clientes).
 2. ~~Testes E2E dos fluxos 4, 5 e 6~~ — concluído em `e2e/team-plan-isolation.spec.ts`, com o aviso de upgrade e as telas de "não encontrado" (D-044).
-3. Auditoria final completa (lint, typecheck, testes, build, smoke, E2E) e o resumo final em 20 itens pedido pelo responsável.
+3. ~~Auditoria final~~ — concluída em 2026-10-03: lint, typecheck, 678 testes, build, smoke dos 3 bundles, 15 cenários E2E, `check:secrets` e `pnpm audit` limpos; resumo em 20 itens entregue ao responsável.
 4. Pendências fora do alcance local: homologar Stripe (modo teste) e SMTP reais; revisão jurídica dos textos; 2FA; multi-bot por empresa (decisão de escopo em AUDIT_2026-10).
 
 Verificação local: `pnpm services:local` (Postgres/Redis), depois lint/typecheck/test/build/test:build e o E2E com as portas 4200/3200 descritas em VALIDATION.
