@@ -38,7 +38,13 @@ beforeEach(() => fake.reset());
 const KEY = 'meta-test-key-not-real';
 
 function provider() {
-  return new MetaModelProvider({ apiKey: KEY, baseURL, maxRetries: 0, timeoutMs: 5_000 });
+  return new MetaModelProvider({
+    apiKey: KEY,
+    baseURL,
+    maxRetries: 0,
+    timeoutMs: 5_000,
+    notFoundRetryDelayMs: 0,
+  });
 }
 
 function request(overrides: Partial<AIRequest> = {}): AIRequest {
@@ -261,7 +267,6 @@ describe('MetaModelProvider — erros', () => {
     { status: 400, type: 'invalid_request_error', retryable: false },
     { status: 401, type: 'authentication_error', retryable: false },
     { status: 403, type: 'permission_error', retryable: false },
-    { status: 404, type: 'not_found_error', retryable: false },
     { status: 429, type: 'rate_limit_error', retryable: true },
     { status: 500, type: 'api_error', retryable: true },
     { status: 502, type: 'api_error', retryable: true },
@@ -280,6 +285,33 @@ describe('MetaModelProvider — erros', () => {
       expect((failure as Error).message).not.toContain(KEY);
     });
   }
+
+  it('404 intermitente da Meta: tenta de novo e responde normalmente', async () => {
+    const notFound = {
+      status: 404,
+      body: { type: 'error', error: { type: 'not_found_error', message: 'Model not found or access denied' } },
+    };
+    replies.push(notFound, notFound, { status: 200, body: message() });
+    const result = await provider().complete(request());
+    expect(result.stopReason).toBeDefined();
+    expect(captured).toHaveLength(3);
+  });
+
+  it('404 persistente vira erro retryable (o job tenta mais tarde, sem passar para a equipe)', async () => {
+    const notFound = {
+      status: 404,
+      body: { type: 'error', error: { type: 'not_found_error', message: 'Model not found or access denied' } },
+    };
+    replies.push(notFound, notFound, notFound);
+    const failure = await provider()
+      .complete(request())
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AIProviderError);
+    expect((failure as AIProviderError).retryable).toBe(true);
+    expect((failure as Error).message).toContain('Meta');
+    expect((failure as Error).message).not.toContain(KEY);
+    expect(captured).toHaveLength(3);
+  });
 
   it('falha de conexão é retryable', async () => {
     const offline = new MetaModelProvider({
