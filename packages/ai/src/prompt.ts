@@ -30,7 +30,13 @@ ESTILO NO WHATSAPP
 - Mensagens curtas, uma ideia por vez; no máximo uma pergunta por mensagem sempre que possível.
 - Use a formatação do WhatsApp com moderação (*negrito*), sem markdown de títulos ou tabelas.
 - Lembre o contexto da conversa e não peça de novo algo que o cliente já informou.
-- Colete informações naturalmente ao longo da conversa, nunca como interrogatório.`;
+- Colete informações naturalmente ao longo da conversa, nunca como interrogatório.
+- Envie só a versão final e revisada do texto: nunca se corrija no meio da mensagem (como "amanhã, digo, hoje"). Confira datas e dias da semana na referência do CONTEXTO ATUAL antes de escrever.
+- Use português correto, com concordância e frases completas: "Agendei sua limpeza de pele" ou "Sua limpeza de pele está agendada", nunca "agendado sua limpeza".
+
+CONFIRMAÇÕES
+- Quando o cliente escolher uma opção (horário, serviço, produto), faça a confirmação em uma frase curta com o essencial (serviço, dia e hora) e pergunte se pode confirmar. Exemplo: "Fechado: limpeza de pele hoje, terça 29/09, às 09:00. Posso confirmar?". Não repita preço, duração ou outras opções que você acabou de informar.
+- Depois de concluir a ação, confirme em uma frase. Se acrescentar algo, use apenas informação que esteja nos dados da empresa ou nos resultados das ferramentas (como o endereço); nunca crie orientações, recomendações ou regras que não estejam lá.`;
 
 const TONE_TEXT: Record<AiTone, string> = {
   FORMAL: 'formal e respeitoso (use "o senhor/a senhora" quando adequado)',
@@ -145,6 +151,47 @@ function formatDateTime(now: Date, timezone: string): string {
   }).format(now);
 }
 
+/** Dia do calendário local da empresa deslocado de `offset` dias (meio-dia UTC, sem efeito de DST). */
+function localCalendarDay(now: Date, timezone: string, offset: number): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: 'year' | 'month' | 'day') =>
+    Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value('year'), value('month') - 1, value('day') + offset, 12));
+}
+
+function formatCalendarDay(day: Date, withYear: boolean): string {
+  const weekday = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'long' }).format(
+    day,
+  );
+  const date = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: '2-digit',
+    ...(withYear ? { year: 'numeric' as const } : {}),
+  }).format(day);
+  return withYear ? `${weekday}, ${date}` : `${weekday} ${date}`;
+}
+
+/**
+ * Referência explícita de hoje/amanhã/próximos dias no fuso da empresa. Só "agora" com hora
+ * levava modelos a errar "hoje" × "amanhã" de madrugada.
+ */
+function calendarReference(now: Date, timezone: string): string[] {
+  const day = (offset: number) => localCalendarDay(now, timezone, offset);
+  const nextDays = [2, 3, 4, 5, 6].map((offset) => formatCalendarDay(day(offset), false));
+  return [
+    `- Hoje: ${formatCalendarDay(day(0), true)}`,
+    `- Amanhã: ${formatCalendarDay(day(1), true)}`,
+    `- Próximos dias: ${nextDays.join(', ')}`,
+    '- Use esta referência para "hoje", "amanhã" e dias da semana; de madrugada, "hoje" continua sendo a data de hoje.',
+  ];
+}
+
 export function composePromptSections(input: PromptInput): PromptSection[] {
   const { template, company, agent } = input;
 
@@ -235,6 +282,7 @@ export function composePromptSections(input: PromptInput): PromptSection[] {
 function composeContext({ company, context }: PromptInput): string {
   const parts: string[] = ['CONTEXTO ATUAL'];
   parts.push(`- Agora: ${formatDateTime(context.now, company.timezone)} (${company.timezone})`);
+  parts.push(...calendarReference(context.now, company.timezone));
   if (context.isOpenNow !== undefined && context.isOpenNow !== null) {
     parts.push(`- A empresa está ${context.isOpenNow ? 'ABERTA' : 'FECHADA'} neste momento.`);
   }

@@ -46,19 +46,19 @@ Sem credenciais externas, tudo roda com providers simulados (**mock**) — IA de
 
 ## Scripts
 
-| Comando                                        | O que faz                                                                            |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `pnpm dev` / `pnpm dev:worker`                 | API + painel em modo desenvolvimento / worker das filas                              |
-| `pnpm build`                                   | Build de produção (API e worker via esbuild, painel via Next)                        |
-| `pnpm lint` · `pnpm typecheck` · `pnpm format` | Qualidade                                                                            |
-| `pnpm test`                                    | Testes unitários e de integração (usa `TEST_DATABASE_URL`)                           |
-| `pnpm test:e2e`                                | Playwright (sobe API, worker e painel isolados com banco `botsaas_e2e`)              |
-| `pnpm test:build`                              | Após o build: verifica imports/validação de API, worker e bootstrap do administrador |
-| `pnpm homolog:anthropic` / `homolog:whatsapp`  | Homologação dos providers reais com credenciais (ver `docs/VALIDATION.md`)           |
-| `pnpm db:migrate`                              | Cria migração a partir do schema (desenvolvimento)                                   |
-| `pnpm db:migrate:deploy`                       | Aplica migrações pendentes                                                           |
-| `pnpm db:seed`                                 | Seed de desenvolvimento (recusado em produção; `-- --reference` só planos/preços)    |
-| `pnpm services:local`                          | PostgreSQL + Redis locais sem Docker                                                 |
+| Comando                                                        | O que faz                                                                            |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `pnpm dev` / `pnpm dev:worker`                                 | API + painel em modo desenvolvimento / worker das filas                              |
+| `pnpm build`                                                   | Build de produção (API e worker via esbuild, painel via Next)                        |
+| `pnpm lint` · `pnpm typecheck` · `pnpm format`                 | Qualidade                                                                            |
+| `pnpm test`                                                    | Testes unitários e de integração (usa `TEST_DATABASE_URL`)                           |
+| `pnpm test:e2e`                                                | Playwright (sobe API, worker e painel isolados com banco `botsaas_e2e`)              |
+| `pnpm test:build`                                              | Após o build: verifica imports/validação de API, worker e bootstrap do administrador |
+| `pnpm homolog:anthropic` / `homolog:meta` / `homolog:whatsapp` | Homologação dos providers reais com credenciais (ver `docs/VALIDATION.md`)           |
+| `pnpm db:migrate`                                              | Cria migração a partir do schema (desenvolvimento)                                   |
+| `pnpm db:migrate:deploy`                                       | Aplica migrações pendentes                                                           |
+| `pnpm db:seed`                                                 | Seed de desenvolvimento (recusado em produção; `-- --reference` só planos/preços)    |
+| `pnpm services:local`                                          | PostgreSQL + Redis locais sem Docker                                                 |
 
 ## Estrutura
 

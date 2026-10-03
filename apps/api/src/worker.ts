@@ -73,6 +73,20 @@ async function main() {
     { pattern: '0 30 3 * * *' },
     { name: 'maintenance.retention', data: {} },
   );
+  // Respostas travadas (job perdido por queda de worker/Redis): ver modules/agent/recovery.ts.
+  const recovery = new Queue(queueNameFor('agent.recover-stalled'), {
+    connection,
+    prefix: QUEUE_PREFIX,
+  });
+  await recovery.upsertJobScheduler(
+    'agent-recover-stalled',
+    { every: 5 * 60_000 },
+    {
+      name: 'agent.recover-stalled',
+      data: {},
+      opts: { attempts: JOB_RETRY_POLICY['agent.recover-stalled'].attempts },
+    },
+  );
 
   const beat = () => void container.redis?.set(WORKER_HEARTBEAT_KEY, String(Date.now()), 'EX', 120);
   beat();
@@ -83,7 +97,12 @@ async function main() {
     logger.info({ signal }, 'Encerrando worker');
     clearInterval(heartbeat);
     await Promise.all(workers.map((worker) => worker.close()));
-    await Promise.all([reminders.close(), retention.close(), container.queue.close()]);
+    await Promise.all([
+      reminders.close(),
+      retention.close(),
+      recovery.close(),
+      container.queue.close(),
+    ]);
     container.redis?.disconnect();
     await disconnectSystemDb();
     process.exit(0);

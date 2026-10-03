@@ -9,8 +9,10 @@ export interface ModelPrice {
 
 /**
  * Valores INICIAIS para a tabela ModelPricing (USD por milhão de tokens), conforme a
- * documentação da Anthropic consultada em set/2026. Preços mudam: a fonte de verdade é a
- * tabela no banco, editável na área da plataforma. Escrita de cache = TTL de 5 minutos.
+ * documentação da Anthropic e da Meta consultada em set/2026. Preços mudam: a fonte de verdade
+ * é a tabela no banco, editável na área da plataforma. Escrita de cache = TTL de 5 minutos.
+ * Muse Spark: o raciocínio é cobrado como saída (já incluído em `output_tokens`) e a Meta não
+ * cobra escrita de cache à parte — o preço de entrada é usado caso ela venha a reportá-la.
  */
 export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice & { displayName: string }> = {
   'claude-opus-5': {
@@ -47,6 +49,13 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice & { displayName: s
     outputUsdPerMTok: 50,
     cacheWriteUsdPerMTok: 12.5,
     cacheReadUsdPerMTok: 0.25,
+  },
+  'muse-spark-1.3': {
+    displayName: 'Muse Spark 1.3 (Meta)',
+    inputUsdPerMTok: 1.25,
+    outputUsdPerMTok: 4.25,
+    cacheWriteUsdPerMTok: 1.25,
+    cacheReadUsdPerMTok: 0.15,
   },
   'claude-opus-4-8': {
     displayName: 'Claude Opus 4.8',

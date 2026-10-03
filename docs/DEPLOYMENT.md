@@ -35,24 +35,39 @@ O smoke `test:build` verifica resolução de imports e rejeição de mocks em pr
 
 API e worker recebem variáveis pelo gerenciador de processos/segredos do host. Os comandos `start` executam Node e **não carregam `.env` automaticamente**. Nunca use variáveis `NEXT_PUBLIC_*` para segredos. Valores e regras exatas estão em [env.ts](../packages/config/src/env.ts) e [.env.example](../.env.example).
 
-| Grupo           | Configuração                                                                                               |
-| --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Ambiente        | `NODE_ENV=production`, `LOG_LEVEL=info`, `APP_URL` e `API_PUBLIC_URL` HTTPS                                |
-| Banco/fila      | `DATABASE_URL` e `REDIS_URL` exclusivos da implantação                                                     |
-| Criptografia    | `ENCRYPTION_KEY` de 32 bytes em base64, igual na API e no worker                                           |
-| IA              | `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, modelo homologado em `AI_DEFAULT_MODEL`                      |
-| WhatsApp        | `WHATSAPP_PROVIDER=cloud`, `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, versão Graph homologada |
-| Objetos         | `STORAGE_PROVIDER=s3`, `S3_BUCKET`, região/endpoint e credenciais ou identidade do host                    |
-| Áudio           | `STT_PROVIDER=none` ou `openai-compatible` com URL/chave/modelo necessários                                |
-| Google opcional | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`                                          |
+| Grupo           | Configuração                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ambiente        | `NODE_ENV=production`, `LOG_LEVEL=info`, `APP_URL` e `API_PUBLIC_URL` HTTPS                                                                                                               |
+| Banco/fila      | `DATABASE_URL` e `REDIS_URL` exclusivos da implantação                                                                                                                                    |
+| Criptografia    | `ENCRYPTION_KEY` de 32 bytes em base64, igual na API e no worker                                                                                                                          |
+| IA              | `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` ou `AI_PROVIDER=meta` + `META_MODEL_API_KEY`; modelo homologado em `AI_DEFAULT_MODEL`                                                       |
+| Rede/abuso      | `TRUST_PROXY` = saltos do balanceador (ex.: `1`) ou IPs/CIDRs dele; `RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT_PER_MINUTE`, `LOGIN_ACCOUNT_MAX_ATTEMPTS`, `AI_TEST_RATE_LIMIT_PER_MINUTE` |
+| WhatsApp        | `WHATSAPP_PROVIDER=cloud`, `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, versão Graph homologada                                                                                |
+| Objetos         | `STORAGE_PROVIDER=s3`, `S3_BUCKET`, região/endpoint e credenciais ou identidade do host                                                                                                   |
+| Áudio           | `STT_PROVIDER=none` ou `openai-compatible` com URL/chave/modelo necessários                                                                                                               |
+| Google opcional | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`                                                                                                                         |
 
 `parseEnv` recusa IA/WhatsApp/STT mock e armazenamento local em produção. Não há flag que libere mocks nesse ambiente. A composição dos providers repete essa recusa e falha quando um provider real configurado está incompleto, em vez de trocá-lo por simulação (D-025). Mantenha a chave de criptografia persistente e protegida: trocá-la sem recriptografar os registros torna os tokens existentes ilegíveis; rotação automatizada ainda não existe.
 
 A configuração de token WhatsApp é por número/empresa e acontece no painel; App Secret e Verify Token são da plataforma. A validação de env não comprova validade de credenciais nem acesso a um modelo ou bucket.
 
+### Checklist de segurança antes de abrir para clientes
+
+- [ ] `NODE_ENV=production`, `LOG_LEVEL=info` (sem `debug`/`trace`), `COOKIE_SECURE` não desligado.
+- [ ] `APP_URL` e `API_PUBLIC_URL` em **HTTPS**; o painel envia HSTS e CSP em produção.
+- [ ] Segredos só no gerenciador do host (nunca em arquivo versionado); `pnpm check:secrets` limpo.
+- [ ] `ENCRYPTION_KEY` própria, com cópia recuperável fora do backup do banco.
+- [ ] `TRUST_PROXY` com os saltos/IPs do balanceador; API sem acesso direto que contorne o proxy.
+- [ ] Limites de requisição revisados para o volume esperado (login por IP e por conta, teste da IA).
+- [ ] Usuário do banco da aplicação sem privilégio de superusuário; backups cifrados e com acesso restrito.
+- [ ] Webhook da Meta com `WHATSAPP_APP_SECRET` e `WHATSAPP_WEBHOOK_VERIFY_TOKEN` fortes.
+- [ ] Bucket de arquivos privado; chave do storage restrita a esse bucket.
+- [ ] Primeiro administrador criado com `start:bootstrap-owner` (sem credencial padrão) e senha forte.
+- [ ] Logs e alertas acompanhados: falhas de login, `login_account_limited`, assinatura de webhook inválida e erros 5xx.
+
 ## Rede, cookies e callbacks
 
-O navegador acessa `/api/*` no mesmo domínio do painel; o Next encaminha à API. O cookie `sid` é host-only, httpOnly e SameSite=Lax; Secure por padrão em produção. Termine TLS em um proxy confiável e mantenha a API protegida contra acesso que contorne esse proxy: o Fastify atual usa `trustProxy: true`, relevante para IP e rate limit.
+O navegador acessa `/api/*` no mesmo domínio do painel; o Next encaminha à API. O cookie `sid` é host-only, httpOnly e SameSite=Lax; Secure por padrão em produção. Termine TLS em um proxy confiável e mantenha a API protegida contra acesso que contorne esse proxy. O IP do cliente só vem de `X-Forwarded-For` quando a conexão chega de um proxy listado em `TRUST_PROXY`; sem essa variável o IP usado nos limites é o da conexão (o do próprio balanceador, que então concentraria todo o tráfego num único limite). `TRUST_PROXY=true` é recusado (D-034).
 
 - Webhook Meta: publique `API_PUBLIC_URL/webhooks/whatsapp` com o corpo bruto intacto. Veja [WHATSAPP.md](WHATSAPP.md).
 - Google: cadastre `APP_URL/api/integrations/google/callback` como redirect URI, usando o rewrite. O callback exige a sessão do usuário que iniciou a conexão; um callback em outro subdomínio não recebe automaticamente o cookie do painel.

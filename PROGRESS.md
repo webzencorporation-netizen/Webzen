@@ -1,7 +1,7 @@
 # PROGRESS
 
 > Fonte de verdade do estado do projeto. Atualize ao fim de cada fase/sessão.
-> Última atualização: 2026-09-27 (noite) — homologação funcional dos fluxos existentes; correção de build; início da Fase 1 (Anthropic real) bloqueado por credencial
+> Última atualização: 2026-09-29 — IA real via Meta Model API (Muse Spark 1.3) integrada e homologada; Anthropic segue disponível, mas bloqueada por créditos na conta
 
 ## Fase atual
 
@@ -138,18 +138,58 @@ A pendência concreta da Fase 1 — validar API, worker, painel e testes de inte
   - Os nove itens pedidos já estavam implementados pela revisão do provider desta mesma data (ver "Retomada após trabalho paralelo... revisão do provider Anthropic" acima, D-025): provider real revisado contra a documentação oficial atual; mock continua disponível via `AI_PROVIDER=mock`; produção recusa mock silenciosamente (`createProviders` lança erro); tratamento de rate limit/erro/indisponibilidade com classificação de retryable (`mapError` em `packages/ai/src/provider/anthropic.ts`); tokens de entrada/saída/cache e custo estimado são registrados (`UsageRecord`/`AgentRun`, `estimateCostUsd`) e expostos em `/api/app/metrics/usage` (confirmado populado na homologação funcional acima); `.env.example` documenta `ANTHROPIC_API_KEY`/`AI_PROVIDER`/`AI_DEFAULT_MODEL`; forma simples de testar a conexão existe tanto por script (`pnpm homolog:anthropic [--cache]`) quanto pelo painel (Agente de IA → Testar agente, usando o provider configurado no ambiente).
   - **Bloqueio inalterado:** sem `ANTHROPIC_API_KEY` real nesta máquina, a homologação com credencial paga (`pnpm homolog:anthropic --cache`) não pôde ser executada nesta sessão. Sem isso, a Fase 1 não pode ser declarada "testada" conforme exigido antes de avançar.
 
+- **IA real via Meta Model API — Muse Spark 1.3 (2026-09-29, D-028)**
+  - Motivo: a verificação de identidade da Anthropic impediu adicionar créditos; o responsável escolheu a IA oficial da Meta. A Llama API foi desativada em jul/2026; a oferta atual é a Meta Model API.
+  - `AI_PROVIDER=meta` → `MetaModelProvider`: provider separado, sobre o formato Messages já usado (SDK Anthropic em `https://api.meta.ai`, Bearer, sem ler `ANTHROPIC_API_KEY`), `effort` sempre enviado e folga de raciocínio em `max_tokens`. Catálogo e modelo efetivo respeitam o provedor ativo; env recusa modelo de outro provedor; `muse-spark-1.3` na tabela de preços (1,25 / 0,15 cache / 4,25 por M).
+  - `pnpm homolog:meta` **APROVADO** com a chave real: modelo e preço, conversa, effort low/medium/high, `thinking: disabled` recusado (esperado), tool calling completo, duas ferramentas no mesmo turno, limite de tokens, streaming, `tool_choice` (só `auto`), 401 e 404 não repetíveis. 429/5xx só nos testes de contrato. Consumo 3.144 in / 1.346 out, ~US$ 0,01.
+  - Painel (Testar agente) com a API real: `search_services` + `update_lead_qualification`, preço correto (R$ 180,00), 3 etapas, US$ 0,024, 17,8 s.
+  - Fluxo WhatsApp pelo simulador (mesma ingestão do webhook; `WHATSAPP_PROVIDER=mock`): worker executou `muse-spark-1.3`/`meta`, 3 tools (horário, catálogo, qualificação), resposta enviada pelo provider mock, US$ 0,019, 16,6 s. A Clínica Demo tinha `claude-opus-5` salvo e caiu corretamente no modelo padrão da Meta.
+  - Chave somente no `.env` (ignorado): ausente de arquivos versionados/novos, histórico git, bundle `.next`, logs de API/worker/painel e respostas da API. Testes da API agora fixam modelo e esvaziam chaves reais (não dependem do `.env` local).
+
+- **Qualidade das respostas com Muse Spark (2026-09-29)**
+  - Conversa real do responsável às 3h mostrou autocorreção ("amanhã, digo, hoje"), confirmação repetitiva e concordância errada ("agendado sua limpeza").
+  - Prompt: o contexto passa a trazer "Hoje/Amanhã/Próximos dias" calculados no fuso da empresa; regras de mensagem final revisada (sem autocorreção), português com concordância e confirmação em uma frase; ao concluir uma ação, só informação dos dados da empresa ou das ferramentas (o modelo tinha inventado "chegue 10 minutos antes").
+  - Bug do painel: o rewrite do Next corta em 30 s (`proxyTimeout`), e o Testar agente devolvia 500 em turnos longos do Muse Spark. Ajustado para 180 s (= lease do turno). O WhatsApp (worker) não era afetado.
+  - Mesma conversa com a API real depois do ajuste: sem autocorreção, confirmação "Fechado: limpeza de pele hoje, terça 29/09, às 09:00. Posso confirmar?", agendamento confirmado só com dados reais. Tempo por turno: `medium` ≈ 27 s / 25 s / ~55 s; `low` ≈ 20 s / 13–17 s / 16–24 s, com qualidade equivalente e custo semelhante (~US$ 0,02–0,03 por turno). A Clínica Demo foi mantida em `medium`.
+
+- **Agenda sem reserva dupla (2026-09-29, D-029)**
+  - Bug reproduzido por teste: 5 pedidos simultâneos para o mesmo horário reservavam 4; duas remarcações simultâneas passavam; reativar um cancelado ocupava horário já tomado.
+  - Correção: "verificar e gravar" em transação com advisory lock por empresa (criação, remarcação e reativação). A consulta ao Google fica fora do lock. O encaixe manual (`enforceAvailability: false`) é preservado.
+  - 4 testes novos em `apps/api/test/calendar.test.ts`. Lint, typecheck e suíte completa verdes (506 testes).
+
+- **Relatório de consumo da IA e fuso do banco (2026-09-29, D-030/D-031)**
+  - `GET /api/platform/usage/breakdown` e `GET /api/app/metrics/usage/breakdown`: totais, por dia, por modelo/provedor e (plataforma) por cliente; chamadas, tokens, custo, execuções, taxa de erro e latência média; período livre (padrão mês corrente).
+  - Bug encontrado pelo teste de virada de dia: o adapter-pg gravava datas deslocadas quando o Postgres não está em UTC (local herdava `America/Santiago`). Sessão agora sempre em UTC; teste reproduz com o banco configurado fora de UTC. Dados locais antigos ficam deslocados — reseedar o banco de desenvolvimento.
+  - 5 testes novos (agrupamento, fuso, isolamento entre clientes, validação de período, permissão, fuso do banco). Lint, typecheck e suíte completa verdes (511 testes).
+
+- **Recuperação de respostas travadas (2026-09-29, D-032)**
+  - Job `agent.recover-stalled` a cada 5 min: reagenda `agent.reply` para conversas em modo IA com mensagem do cliente pendente entre 10 min e 6 h; depois de 3 execuções sem resolver, passa para humano (nota + notificação) e para de tentar.
+  - Mensagens de saída com falha continuam sem reenvio automático (D-020).
+  - 4 testes novos (recuperação ponta a ponta, filtros, limite com handoff único, várias empresas). Lint, typecheck e suíte completa verdes (515 testes).
+
+- **Custo do WhatsApp nos relatórios (2026-09-29, D-033)**
+  - A cobrança informada pela Meta nos status é gravada por mensagem (migração `message_whatsapp_pricing`: 3 colunas opcionais + índice) e somada ao relatório de consumo por dia, cliente e categoria.
+  - Preço: referência oficial (US$ 0,0068 service/utility/authentication, Brasil) + `WHATSAPP_PRICE_USD`; categorias sem preço (marketing) ficam sem custo, contadas à parte.
+  - 3 testes novos (gravação única e fora de ordem, soma por categoria com e sem preço + isolamento, validação do env). Lint, typecheck e suíte completa verdes (518 testes).
+
+- **Auditoria e hardening de segurança (2026-09-30, D-034)**
+  - Mapeamento completo (155 rotas, auth, RBAC, tenant, webhooks, SSRF, SQL cru, uploads, IA, dependências, histórico git). Nada crítico; 2 ALTAS, 3 MÉDIAS e 2 BAIXAS confirmadas por teste e corrigidas: IP forjável (`trustProxy`), login sem limite por conta, "Testar agente" sem limite/orçamento, redação de logs rasa, painel sem CSP/HSTS, fixação de sessão, dependências do CLI do Prisma.
+  - Inventário de endpoints com teste de política; verificador de segredos (CI + pré-commit) e `pnpm audit` no CI. CSP validada com build de produção no navegador (sem violações).
+  - 37 testes de segurança novos; suíte completa verde (555 testes). `pnpm audit`: nenhuma vulnerabilidade conhecida.
+  - Pendentes documentados: MFA para administradores, papel de banco restrito em produção, expiração de sessão por inatividade.
+
 ## Em andamento
 
-- Aguardando `ANTHROPIC_API_KEY` real do usuário para concluir a homologação da Fase 1 (Anthropic) e poder declará-la testada. Nada mais em andamento; não houve commit.
+- Nada em andamento. Pendente de decisão do responsável: conectar um número real no WhatsApp Cloud (`WHATSAPP_PROVIDER=cloud`) para a homologação ponta a ponta com a Meta.
 
 ## Próximos passos
 
-1. Homologar com credenciais reais, nesta ordem: `pnpm homolog:anthropic --cache` → cenários de [AI_AGENT](docs/AI_AGENT.md) → `pnpm homolog:whatsapp` em `v26.0` → cenários de [WHATSAPP](docs/WHATSAPP.md) → Google (app OAuth publicado) e bucket S3/R2.
-2. Confirmar a primeira execução do workflow no GitHub.
+1. Homologar com credenciais reais, nesta ordem: cenários de atendimento de [AI_AGENT](docs/AI_AGENT.md) com Muse Spark (qualidade das respostas, agenda, handoff; avaliar `effort=low` para latência) → `pnpm homolog:whatsapp` em `v26.0` → cenários de [WHATSAPP](docs/WHATSAPP.md) → Google (app OAuth publicado) e bucket S3/R2. Anthropic (`pnpm homolog:anthropic --cache`) quando houver créditos.
+2. ~~Confirmar a primeira execução do workflow no GitHub~~ — concluído: CI verde em 2026-09-28 (`webzencorporation-netizen/Webzen`, execução 36502894539).
 3. Implementar [contabilização de custos desconhecidos](docs/COST_ACCOUNTING_PLAN.md) em etapa própria: proposta preparada, sem migração ou mudança de comportamento nesta sessão. Ampliar expurgo/reconciliação de storage conforme limites documentados.
 4. Preparar replay administrativo/reconciliação de jobs esgotados sem duplicar efeitos externos.
 5. **Decisão de produto pendente — BSUID no WhatsApp:** hoje, clientes com nome de usuário e sem interação recente não recebem resposta automática; as mensagens ficam retidas. Suporte completo exige migração de `Contact` (telefone opcional + BSUID único por empresa), envio por `recipient`, mescla quando o telefone aparecer, troca de número (`user_id_update`) e reprocessamento dos eventos retidos. Ver D-026 e [WHATSAPP](docs/WHATSAPP.md).
-6. **Custo da Meta a partir de 2026-10-01:** cada mensagem de serviço (inclusive respostas da IA) passa a ser cobrada ao preço de utility. Os relatórios contam só a IA. Decidir se o custo WhatsApp entra nos relatórios, limites e planos; os campos `pricing` dos status já são lidos.
+6. **Custo da Meta a partir de 2026-10-01:** já gravado e somado aos relatórios (D-033). Pendente: conferir a tabela oficial vigente em 2026-10-01 e configurar `WHATSAPP_PRICE_USD` (principalmente marketing); decidir se o custo WhatsApp entra em limites e planos.
 
 ## Problemas conhecidos
 

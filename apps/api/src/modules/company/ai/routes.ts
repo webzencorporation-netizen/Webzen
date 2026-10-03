@@ -4,12 +4,13 @@ import {
   AI_FALLBACK_BEHAVIORS,
   AI_RESPONSE_LENGTHS,
   AI_TONES,
+  RateLimitError,
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { optionalText, paginationQuerySchema } from '../../../lib/http';
 import { scopeFromRequest } from '../../../lib/scope';
-import { company, requireAuthContext } from '../../../plugins/guards';
+import { company, requireAuthContext, requireTenant } from '../../../plugins/guards';
 import { getTestConversation, resetTestChat, runTestChat } from '../../agent/test-chat';
 import * as ai from './service';
 
@@ -40,6 +41,13 @@ const configBody = z.object({
 });
 
 export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Cada mensagem do "Testar agente" chama a IA paga: limite por EMPRESA (não por IP).
+  const testChatLimiter = app.createRateLimit({
+    max: app.container.env.AI_TEST_RATE_LIMIT_PER_MINUTE,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => `ai-test:${requireTenant(request).companyId}`,
+  });
+
   app.get('/', { preValidation: company('ai:read') }, async (request) =>
     ai.getAiSettings(scopeFromRequest(request)),
   );
@@ -76,12 +84,16 @@ export const aiRoutes: FastifyPluginAsyncZod = async (app) => {
       preValidation: company('ai:test'),
       schema: { body: z.object({ message: z.string().trim().min(1).max(2000) }) },
     },
-    async (request) =>
-      runTestChat(
+    async (request) => {
+      const limit = await testChatLimiter(request);
+      if (!limit.isAllowed && limit.isExceeded)
+        throw new RateLimitError('Muitos testes seguidos. Aguarde um minuto.');
+      return runTestChat(
         scopeFromRequest(request),
         requireAuthContext(request).user.id.replaceAll('-', ''),
         request.body.message,
-      ),
+      );
+    },
   );
 
   app.delete('/test', { preValidation: company('ai:test') }, async (request) => {

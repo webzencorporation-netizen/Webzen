@@ -34,10 +34,37 @@ export const envSchema = z.object({
   COOKIE_SECURE: booleanString.optional(),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(300),
   LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  /** Tentativas de login por CONTA a cada 15 min, de qualquer IP (força bruta distribuída). */
+  LOGIN_ACCOUNT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  /** Chamadas do "Testar agente" (IA paga) por empresa por minuto. */
+  AI_TEST_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  /**
+   * Proxies confiáveis para ler o IP real do `X-Forwarded-For`. Vazio = nenhum (o IP é o da
+   * conexão). Use o nº de saltos (ex.: `1`) ou IPs/CIDRs separados por vírgula. `true`
+   * (confiar em qualquer origem) é recusado: permitiria forjar o IP e burlar rate limits.
+   */
+  TRUST_PROXY: optionalString.transform((value, ctx) => {
+    if (value === undefined || value === 'false') return false as const;
+    if (value === 'true') {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'TRUST_PROXY=true confia em qualquer origem; informe saltos (ex.: 1) ou IPs/CIDRs.',
+      });
+      return z.NEVER;
+    }
+    if (/^\d+$/.test(value)) return Number(value);
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }),
 
   // IA
-  AI_PROVIDER: z.enum(['anthropic', 'mock']).default('mock'),
+  AI_PROVIDER: z.enum(['anthropic', 'meta', 'mock']).default('mock'),
   ANTHROPIC_API_KEY: optionalString,
+  META_MODEL_API_KEY: optionalString,
+  META_MODEL_API_BASE_URL: z.url().default('https://api.meta.ai'),
   AI_DEFAULT_MODEL: z.string().min(1).default('claude-opus-5'),
   AI_SUMMARY_MODEL: optionalString,
   AI_REFUSAL_FALLBACK: booleanString.default(true),
@@ -52,6 +79,24 @@ export const envSchema = z.object({
   WHATSAPP_GRAPH_API_BASE_URL: z.url().default('https://graph.facebook.com'),
   WHATSAPP_APP_SECRET: optionalString,
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: optionalString,
+  /** Preço por mensagem cobrável (USD) por categoria; complementa a referência do pacote whatsapp. */
+  WHATSAPP_PRICE_USD: optionalString.transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = undefined;
+    }
+    const result = z.record(z.string().min(1), z.number().nonnegative()).safeParse(parsed);
+    if (result.success) return result.data;
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        'Use JSON { "categoria": preço em USD }, ex.: {"marketing":0.0625,"service":0.0068}.',
+    });
+    return z.NEVER;
+  }),
   META_APP_ID: optionalString,
   META_EMBEDDED_SIGNUP_CONFIG_ID: optionalString,
 
@@ -88,6 +133,25 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+export type AIProviderName = Env['AI_PROVIDER'];
+
+/** Provedor de IA dono de um id de modelo (pelo prefixo); `null` quando desconhecido. */
+export function aiProviderForModel(model: string): Exclude<AIProviderName, 'mock'> | null {
+  if (model.startsWith('claude-')) return 'anthropic';
+  if (model.startsWith('muse-')) return 'meta';
+  return null;
+}
+
+/**
+ * Um modelo serve ao provedor ativo quando pertence a ele ou tem prefixo desconhecido.
+ * O mock aceita qualquer modelo (não chama API).
+ */
+export function isModelCompatible(provider: AIProviderName, model: string): boolean {
+  if (provider === 'mock') return true;
+  const owner = aiProviderForModel(model);
+  return owner === null || owner === provider;
+}
+
 export class EnvValidationError extends Error {
   constructor(public readonly issues: string[]) {
     super(`Configuração de ambiente inválida:\n - ${issues.join('\n - ')}`);
@@ -117,6 +181,20 @@ export function validateEnvRules(env: Env): string[] {
   }
   if (env.AI_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
     issues.push('ANTHROPIC_API_KEY é obrigatória quando AI_PROVIDER=anthropic.');
+  }
+  if (env.AI_PROVIDER === 'meta' && !env.META_MODEL_API_KEY) {
+    issues.push('META_MODEL_API_KEY é obrigatória quando AI_PROVIDER=meta.');
+  }
+  for (const [variable, model] of [
+    ['AI_DEFAULT_MODEL', env.AI_DEFAULT_MODEL],
+    ['AI_SUMMARY_MODEL', env.AI_SUMMARY_MODEL],
+  ] as const) {
+    if (model && !isModelCompatible(env.AI_PROVIDER, model)) {
+      issues.push(
+        `${variable}=${model} pertence a outro provedor; com AI_PROVIDER=${env.AI_PROVIDER} use um modelo desse provedor` +
+          (env.AI_PROVIDER === 'meta' ? ' (ex.: muse-spark-1.3).' : '.'),
+      );
+    }
   }
   if (env.WHATSAPP_PROVIDER === 'cloud') {
     if (!env.WHATSAPP_APP_SECRET)

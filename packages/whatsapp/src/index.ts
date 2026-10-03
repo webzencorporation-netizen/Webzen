@@ -28,3 +28,4 @@ export {
   type WhatsAppHomologationOptions,
   type WhatsAppHomologationReport,
 } from './homologation';
+export { WHATSAPP_REFERENCE_PRICES_USD, whatsappPriceTable } from './pricing';

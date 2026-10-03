@@ -1,6 +1,7 @@
 import { buildSummaryInput, SUMMARY_SYSTEM_PROMPT, type HistoryMessage } from '@botsaas/ai';
 import type { CompanyScope } from '../../context';
 import { getOwnCompany, isCompanyExecutionBlocked } from '../../lib/company-record';
+import { effectiveModel } from '../models/service';
 import { costFor } from './pricing';
 
 const MAX_MESSAGES_PER_SUMMARY = 200;
@@ -35,7 +36,7 @@ export async function summarizeConversation(
 
   const { container } = scope;
   const config = await scope.db.aIConfiguration.findFirst({ select: { model: true } });
-  const model = container.env.AI_SUMMARY_MODEL ?? config?.model ?? container.env.AI_DEFAULT_MODEL;
+  const model = container.env.AI_SUMMARY_MODEL ?? effectiveModel(config?.model, container.env);
   if (isCompanyExecutionBlocked((await getOwnCompany(scope)).status)) return null;
   const response = await container.providers.ai.complete({
     model,

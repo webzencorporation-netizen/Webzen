@@ -1,6 +1,7 @@
 /**
  * Abstração do provedor de IA. O AgentEngine fala somente com esta interface;
- * `AnthropicProvider` traduz para a Messages API e `MockAIProvider` é usado em dev/testes.
+ * `AnthropicProvider` e `MetaModelProvider` traduzem para a Messages API; `MockAIProvider` é usado
+ * em dev/testes.
  */
 
 export interface AITextBlock {
@@ -116,7 +117,7 @@ export interface AIResponse {
 }
 
 export interface AIProvider {
-  readonly name: 'anthropic' | 'mock';
+  readonly name: 'anthropic' | 'meta' | 'mock';
   complete(request: AIRequest): Promise<AIResponse>;
 }
 

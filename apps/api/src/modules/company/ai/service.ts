@@ -11,7 +11,7 @@ import type { CompanyScope } from '../../../context';
 import { audit } from '../../../lib/audit';
 import { getOwnCompany } from '../../../lib/company-record';
 import { toSkipTake, type PaginationQuery } from '../../../lib/http';
-import { listAvailableModels } from '../../models/service';
+import { effectiveModel, listAvailableModels } from '../../models/service';
 import { formatAddress, type CompanyAddress } from '../settings/service';
 
 export function toConfigDto(config: AIConfiguration) {
@@ -33,13 +33,13 @@ export async function getAiSettings(scope: CompanyScope) {
     requireConfig(scope),
     scope.db.aIToolConfiguration.findMany(),
     getOwnCompany(scope),
-    listAvailableModels(),
+    listAvailableModels(scope.container.env.AI_PROVIDER),
   ]);
   const template = getBusinessTemplate(company.templateKey);
   return {
     config: {
       ...toConfigDto(config),
-      effectiveModel: config.model ?? scope.container.env.AI_DEFAULT_MODEL,
+      effectiveModel: effectiveModel(config.model, scope.container.env),
     },
     tools: TOOL_NAMES.map((name) => ({
       name,
@@ -98,7 +98,7 @@ export type AiConfigInput = Partial<
 export async function updateAiConfig(scope: CompanyScope, input: AiConfigInput) {
   const current = await requireConfig(scope);
   if (input.model) {
-    const models = await listAvailableModels();
+    const models = await listAvailableModels(scope.container.env.AI_PROVIDER);
     if (!models.some((model) => model.id === input.model))
       throw new ValidationError('Modelo não disponível.');
   }

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  aiProviderForModel,
   describeProviders,
   EnvValidationError,
+  isModelCompatible,
   envSchema,
   getEnv,
   parseEnv,
@@ -143,6 +145,70 @@ describe('configuração de ambiente', () => {
     expect(serialized).not.toContain('fixture-');
     expect(serialized).not.toContain('postgresql:');
     expect(serialized).not.toContain(production.ENCRYPTION_KEY);
+  });
+
+  it('Meta Model API: exige a chave e um modelo da Meta, sem vazar a chave no resumo', () => {
+    const meta = {
+      ...production,
+      AI_PROVIDER: 'meta',
+      ANTHROPIC_API_KEY: '',
+      META_MODEL_API_KEY: 'fixture-meta-model-key',
+      AI_DEFAULT_MODEL: 'muse-spark-1.3',
+    };
+    const env = parseEnv(meta);
+    expect(env.META_MODEL_API_BASE_URL).toBe('https://api.meta.ai');
+    expect(describeProviders(env)).toMatchObject({ ai: 'meta', aiDefaultModel: 'muse-spark-1.3' });
+    expect(JSON.stringify(describeProviders(env))).not.toContain('fixture-');
+
+    expect(() => parseEnv({ ...meta, META_MODEL_API_KEY: '' })).toThrow(/META_MODEL_API_KEY/);
+    expect(() => parseEnv({ ...meta, AI_DEFAULT_MODEL: 'claude-opus-5' })).toThrow(
+      /AI_DEFAULT_MODEL=claude-opus-5 pertence a outro provedor.*muse-spark-1\.3/,
+    );
+    expect(() => parseEnv({ ...meta, AI_SUMMARY_MODEL: 'claude-haiku-4-5' })).toThrow(
+      /AI_SUMMARY_MODEL/,
+    );
+  });
+
+  it('Anthropic recusa modelo da Meta; mock aceita qualquer modelo', () => {
+    expect(() => parseEnv({ ...production, AI_DEFAULT_MODEL: 'muse-spark-1.3' })).toThrow(
+      /AI_DEFAULT_MODEL=muse-spark-1.3 pertence a outro provedor/,
+    );
+    expect(parseEnv({ ...local, AI_DEFAULT_MODEL: 'muse-spark-1.3' }).AI_PROVIDER).toBe('mock');
+  });
+
+  it('TRUST_PROXY: desligado por padrão, aceita saltos ou IPs e recusa confiar em todos', () => {
+    expect(parseEnv(local).TRUST_PROXY).toBe(false);
+    expect(parseEnv({ ...local, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
+    expect(parseEnv({ ...local, TRUST_PROXY: '10.0.0.0/8, 127.0.0.1' }).TRUST_PROXY).toEqual([
+      '10.0.0.0/8',
+      '127.0.0.1',
+    ]);
+    expect(() => parseEnv({ ...local, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/);
+  });
+
+  it('lê a tabela de preços do WhatsApp e recusa formato inválido', () => {
+    expect(
+      parseEnv({ ...local, WHATSAPP_PRICE_USD: '{"marketing":0.0625}' }).WHATSAPP_PRICE_USD,
+    ).toEqual({
+      marketing: 0.0625,
+    });
+    expect(parseEnv(local).WHATSAPP_PRICE_USD).toBeUndefined();
+    for (const invalid of ['0.0068', '{"service":-1}', '{"service":"barato"}', 'não é json']) {
+      expect(() => parseEnv({ ...local, WHATSAPP_PRICE_USD: invalid })).toThrow(
+        /WHATSAPP_PRICE_USD/,
+      );
+    }
+  });
+
+  it('identifica o provedor dono de cada modelo pelo prefixo', () => {
+    expect(aiProviderForModel('claude-opus-5')).toBe('anthropic');
+    expect(aiProviderForModel('muse-spark-1.3')).toBe('meta');
+    expect(aiProviderForModel('modelo-proprio')).toBeNull();
+    expect(isModelCompatible('meta', 'muse-spark-1.3')).toBe(true);
+    expect(isModelCompatible('meta', 'claude-opus-5')).toBe(false);
+    expect(isModelCompatible('anthropic', 'muse-spark-1.3')).toBe(false);
+    expect(isModelCompatible('meta', 'modelo-proprio')).toBe(true);
+    expect(isModelCompatible('mock', 'claude-opus-5')).toBe(true);
   });
 
   it('só sinaliza credenciais Google quando ambos os campos estão presentes', () => {

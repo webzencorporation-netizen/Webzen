@@ -1,6 +1,6 @@
 # Diagnóstico e recuperação operacional
 
-Este roteiro usa os controles existentes. Não há replay administrativo, reconciliador global de filas nem garantia de envio externo exatamente uma vez. Faça a investigação na empresa correta e preserve os identificadores antes de qualquer intervenção.
+Este roteiro usa os controles existentes. Respostas da IA travadas por job perdido são reagendadas automaticamente entre 10 min e 6 h, e passam para humano após 3 execuções sem resolver (D-032). Não há replay administrativo, reconciliador para os demais jobs nem garantia de envio externo exatamente uma vez. Faça a investigação na empresa correta e preserve os identificadores antes de qualquer intervenção.
 
 ## Evidência inicial
 

@@ -1,5 +1,6 @@
 import type { AppContainer } from '../container';
 import { systemScope } from '../lib/scope';
+import { recoverStalledReplies } from '../modules/agent/recovery';
 import { handleAgentReplyJob } from '../modules/agent/runner';
 import { summarizeConversation } from '../modules/agent/summary';
 import { dispatchDomainEvent } from '../modules/automations/engine';
@@ -58,6 +59,7 @@ export const JOB_PROCESSORS: { [N in JobName]: { concurrency: number; run: Proce
   },
   'appointments.reminders': { concurrency: 1, run: (c) => emitAppointmentReminders(c) },
   'maintenance.retention': { concurrency: 1, run: (c) => runRetention(c) },
+  'agent.recover-stalled': { concurrency: 1, run: (c) => recoverStalledReplies(c) },
 };
 
 export function runJob<N extends JobName>(

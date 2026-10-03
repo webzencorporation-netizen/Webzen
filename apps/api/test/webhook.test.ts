@@ -137,7 +137,9 @@ describe('webhook do WhatsApp', () => {
       { profile: { name: 'Bia', username: 'bia' }, user_id: 'BR.9999' },
     ] as unknown as typeof value.contacts;
     const { from: _omitted, ...withoutPhone } = value.messages[0]!;
-    value.messages = [{ ...withoutPhone, from_user_id: 'BR.9999' }] as unknown as typeof value.messages;
+    value.messages = [
+      { ...withoutPhone, from_user_id: 'BR.9999' },
+    ] as unknown as typeof value.messages;
 
     for (let delivery = 0; delivery < 2; delivery += 1) {
       const response = await postWebhook(harness, payload);
@@ -217,5 +219,60 @@ describe('webhook do WhatsApp', () => {
       (await systemDb.conversation.findUniqueOrThrow({ where: { id: conversation.id } }))
         .needsAttention,
     ).toBe(true);
+  });
+
+  it('grava a cobrança informada pela Meta uma única vez, mesmo com status fora de ordem', async () => {
+    const company = await createCompanyFixture(harness, { name: 'Clínica', ownerEmail: 'a@a.com' });
+    await createWhatsAppAccount(company.id, '111');
+    await postWebhook(harness, inboundText('111', '5511999990000', 'oi'));
+    await drainJobs(harness, { only: ['webhook.process'] });
+    const conversation = await systemDb.conversation.findFirstOrThrow();
+    const outbound = (externalId: string) =>
+      systemDb.message.create({
+        data: {
+          companyId: company.id,
+          conversationId: conversation.id,
+          direction: 'OUTBOUND',
+          sender: 'AI',
+          text: 'Olá!',
+          status: 'SENT',
+          externalId,
+        },
+      });
+    const billed = await outbound('wamid.PRICED');
+    const free = await outbound('wamid.FREE');
+
+    const status = (
+      messageId: string,
+      value: 'sent' | 'delivered' | 'read',
+      category: string,
+      billable = true,
+    ) =>
+      postWebhook(
+        harness,
+        buildStatusWebhook({
+          phoneNumberId: '111',
+          messageId,
+          status: value,
+          recipientId: '5511999990000',
+          pricing: { billable, category, pricing_model: 'PMP', type: 'regular' },
+        }),
+      );
+    // "read" chega antes de "delivered": o status é ignorado, a cobrança não.
+    await status('wamid.PRICED', 'read', 'service');
+    await status('wamid.PRICED', 'delivered', 'utility');
+    await status('wamid.FREE', 'delivered', 'service', false);
+    await drainJobs(harness, { only: ['webhook.process'] });
+
+    expect(await systemDb.message.findUniqueOrThrow({ where: { id: billed.id } })).toMatchObject({
+      status: 'READ',
+      billable: true,
+      pricingCategory: 'service',
+      pricingModel: 'PMP',
+    });
+    expect(await systemDb.message.findUniqueOrThrow({ where: { id: free.id } })).toMatchObject({
+      billable: false,
+      pricingCategory: 'service',
+    });
   });
 });

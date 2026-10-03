@@ -89,6 +89,12 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
+      - name: Secret scan
+        run: pnpm check:secrets
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level high
+
       - name: Lint
         run: pnpm lint
 

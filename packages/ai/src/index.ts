@@ -5,6 +5,13 @@ export {
   toAnthropicMessages,
   type AnthropicProviderConfig,
 } from './provider/anthropic';
+export {
+  META_MODEL_API_BASE_URL,
+  META_REASONING_HEADROOM,
+  MetaModelProvider,
+  metaMaxTokens,
+  type MetaModelProviderConfig,
+} from './provider/meta';
 export { MockAIProvider, type MockScriptStep } from './provider/mock';
 export * from './tools/types';
 export * from './tools/catalog';
@@ -28,3 +35,4 @@ export {
   type HomologationOptions,
   type HomologationReport,
 } from './homologation';
+export { runMetaHomologation, type MetaHomologationOptions } from './homologation-meta';

@@ -1,10 +1,16 @@
 import { hashPassword, PASSWORD_MIN_LENGTH, systemDb, verifyPassword } from '@botsaas/database';
-import { AuthenticationError, AuthorizationError, ValidationError } from '@botsaas/shared';
+import {
+  AuthenticationError,
+  AuthorizationError,
+  RateLimitError,
+  ValidationError,
+} from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { authenticated, requireAuthContext } from '../../plugins/guards';
 import { sessionCookieOptions } from '../../plugins/auth';
 import { auditPlatform } from '../../lib/audit';
+import { sha256 } from '../../lib/crypto';
 import { authenticate, buildMe, defaultCompanyFor } from './service';
 import {
   createSession,
@@ -15,13 +21,24 @@ import {
 } from './sessions';
 
 const loginSchema = z.object({
-  email: z.email().max(200),
+  // Normaliza antes de validar: o limite por conta e a busca usam o mesmo e-mail canônico.
+  email: z.string().trim().toLowerCase().max(200).pipe(z.email()),
   password: z.string().min(1).max(200),
 });
+
+/** Janela do limite de tentativas por conta. */
+const ACCOUNT_WINDOW = '15 minutes';
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
   const { env } = app.container;
   const secureCookie = env.COOKIE_SECURE ?? env.NODE_ENV === 'production';
+  // Por conta, de qualquer IP: o limite por IP sozinho não segura força bruta distribuída.
+  // Conta toda tentativa (existente ou não), então não revela quais e-mails têm cadastro.
+  const accountLimiter = app.createRateLimit({
+    max: env.LOGIN_ACCOUNT_MAX_ATTEMPTS,
+    timeWindow: ACCOUNT_WINDOW,
+    keyGenerator: (request) => `login-account:${sha256((request.body as { email: string }).email)}`,
+  });
 
   app.post(
     '/login',
@@ -30,9 +47,23 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       config: { rateLimit: { max: env.LOGIN_RATE_LIMIT_PER_MINUTE, timeWindow: '1 minute' } },
     },
     async (request, reply) => {
+      const limit = await accountLimiter(request);
+      if (!limit.isAllowed && limit.isExceeded) {
+        request.log.warn(
+          { security: 'login_account_limited' },
+          'Login bloqueado por excesso de tentativas',
+        );
+        throw new RateLimitError('Muitas tentativas de login. Aguarde alguns minutos.');
+      }
       const user = await authenticate(request.body.email, request.body.password);
-      if (!user) throw new AuthenticationError('E-mail ou senha inválidos.');
+      if (!user) {
+        request.log.info({ security: 'login_failed' }, 'Falha de login');
+        throw new AuthenticationError('E-mail ou senha inválidos.');
+      }
 
+      // Fixação de sessão: a sessão que o navegador já tinha (outro usuário ou token plantado)
+      // deixa de valer; o login sempre emite um token novo.
+      if (request.auth) await destroySession(request.auth.session.id);
       const { token, expiresAt } = await createSession({
         userId: user.id,
         ttlDays: env.SESSION_TTL_DAYS,

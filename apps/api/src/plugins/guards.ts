@@ -11,6 +11,23 @@ import {
 import type { FastifyRequest } from 'fastify';
 import type { AuthContext, TenantContext } from '../context';
 
+/** Metadados de cada guard, lidos pelo inventário de endpoints (plugins/route-inventory.ts). */
+export type GuardInfo =
+  | { kind: 'authenticated' }
+  | { kind: 'platform'; permission: PlatformPermission }
+  | { kind: 'company'; permission: CompanyPermission | null };
+
+const GUARDS = new WeakMap<object, GuardInfo>();
+
+function markGuard<T extends object>(fn: T, info: GuardInfo): T {
+  GUARDS.set(fn, info);
+  return fn;
+}
+
+export function guardInfo(fn: unknown): GuardInfo | undefined {
+  return typeof fn === 'function' ? GUARDS.get(fn) : undefined;
+}
+
 /** Papel efetivo no modo suporte (administração da empresa, auditado). */
 const SUPPORT_MODE_ROLE = 'COMPANY_ADMIN' as const;
 
@@ -25,19 +42,25 @@ export function requireTenant(request: FastifyRequest): TenantContext {
 }
 
 /** preHandler: exige usuário autenticado. */
-export async function authenticated(request: FastifyRequest): Promise<void> {
-  requireAuthContext(request);
-}
+export const authenticated = markGuard(
+  async (request: FastifyRequest): Promise<void> => {
+    requireAuthContext(request);
+  },
+  { kind: 'authenticated' },
+);
 
 /** preHandler: exige papel de plataforma com a permissão informada. */
 export function platform(permission: PlatformPermission) {
-  return async (request: FastifyRequest): Promise<void> => {
-    const auth = requireAuthContext(request);
-    const role = auth.user.platformRole;
-    if (!role || !platformRoleHasPermission(role, permission)) {
-      throw new AuthorizationError();
-    }
-  };
+  return markGuard(
+    async (request: FastifyRequest): Promise<void> => {
+      const auth = requireAuthContext(request);
+      const role = auth.user.platformRole;
+      if (!role || !platformRoleHasPermission(role, permission)) {
+        throw new AuthorizationError();
+      }
+    },
+    { kind: 'platform', permission },
+  );
 }
 
 /**
@@ -100,14 +123,17 @@ export async function resolveTenantContext(
 
 /** preHandler: carrega o contexto da empresa e (opcionalmente) exige uma permissão. */
 export function company(permission?: CompanyPermission) {
-  return async (request: FastifyRequest): Promise<void> => {
-    const auth = requireAuthContext(request);
-    const tenant = request.tenant ?? (await resolveTenantContext(request, auth));
-    request.tenant = tenant;
-    if (permission && !tenant.permissions.has(permission)) {
-      throw new AuthorizationError();
-    }
-  };
+  return markGuard(
+    async (request: FastifyRequest): Promise<void> => {
+      const auth = requireAuthContext(request);
+      const tenant = request.tenant ?? (await resolveTenantContext(request, auth));
+      request.tenant = tenant;
+      if (permission && !tenant.permissions.has(permission)) {
+        throw new AuthorizationError();
+      }
+    },
+    { kind: 'company', permission: permission ?? null },
+  );
 }
 
 export function hasPermission(tenant: TenantContext, permission: CompanyPermission): boolean {

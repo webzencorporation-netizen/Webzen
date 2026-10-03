@@ -173,6 +173,34 @@ describe('composição de prompt', () => {
     expect(volatile?.text).toContain('Maria');
     expect(volatile?.text.match(/<\/cliente>/g)).toHaveLength(1);
   });
+
+  it('de madrugada, "hoje" e "amanhã" vêm explícitos no fuso da empresa', () => {
+    // 03:45 de terça 29/09 em São Paulo (06:45 UTC)
+    const [, volatile] = composeSystemPrompt({
+      ...input,
+      context: { ...input.context, now: new Date('2026-09-29T06:45:00Z') },
+    });
+    expect(volatile?.text).toContain('- Hoje: terça-feira, 29/09/2026');
+    expect(volatile?.text).toContain('- Amanhã: quarta-feira, 30/09/2026');
+    expect(volatile?.text).toContain('quinta-feira 01/10');
+  });
+
+  it('usa a data local da empresa mesmo quando em UTC já é o dia seguinte', () => {
+    // 23:30 de terça 29/09 em São Paulo = 02:30 UTC de quarta 30/09
+    const [, volatile] = composeSystemPrompt({
+      ...input,
+      context: { ...input.context, now: new Date('2026-09-30T02:30:00Z') },
+    });
+    expect(volatile?.text).toContain('- Hoje: terça-feira, 29/09/2026');
+    expect(volatile?.text).toContain('- Amanhã: quarta-feira, 30/09/2026');
+  });
+
+  it('orienta mensagem final revisada e confirmação curta', () => {
+    const [stable] = composeSystemPrompt(input);
+    expect(stable?.text).toMatch(/nunca se corrija no meio/i);
+    expect(stable?.text).toMatch(/confirma(r|ção).*uma frase/i);
+    expect(stable?.text).toMatch(/nunca crie orientações/i);
+  });
 });
 
 describe('histórico', () => {

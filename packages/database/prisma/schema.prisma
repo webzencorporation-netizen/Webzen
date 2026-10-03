@@ -830,6 +830,11 @@ model Message {
   deliveredAt       DateTime?        @db.Timestamptz(6)
   readAt            DateTime?        @db.Timestamptz(6)
   failedAt          DateTime?        @db.Timestamptz(6)
+  /// Cobrança informada pela Meta no primeiro status com `pricing` (null = ainda não informada).
+  billable          Boolean?
+  /// Categoria de cobrança da Meta (service, utility, marketing, authentication...).
+  pricingCategory   String?
+  pricingModel      String?
   createdAt         DateTime         @default(now()) @db.Timestamptz(6)
 
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -842,6 +847,7 @@ model Message {
   @@index([conversationId, createdAt])
   @@index([companyId, createdAt])
   @@index([companyId, direction, createdAt])
+  @@index([billable, createdAt])
 }
 
 model MediaAsset {

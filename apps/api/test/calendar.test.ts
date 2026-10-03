@@ -130,6 +130,103 @@ describe('agenda', () => {
     ).toBe(2);
   });
 
+  it('pedidos simultâneos para o mesmo horário: só um é reservado', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const { service, contact, owner } = await setup();
+
+    const attempts = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        owner.post('/api/app/calendar/appointments', {
+          contactId: contact.id,
+          serviceId: service.id,
+          startAt: '2026-10-05T12:00:00.000Z',
+        }),
+      ),
+    );
+
+    expect(attempts.map((response) => response.statusCode).sort()).toEqual([
+      201, 409, 409, 409, 409,
+    ]);
+    expect(await systemDb.appointment.count({ where: { status: 'CONFIRMED' } })).toBe(1);
+  });
+
+  it('remarcações simultâneas para o mesmo horário: só uma vence', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const { service, contact, owner } = await setup();
+    const ids: string[] = [];
+    for (const startAt of ['2026-10-05T12:00:00.000Z', '2026-10-05T14:00:00.000Z']) {
+      const created = await owner.post('/api/app/calendar/appointments', {
+        contactId: contact.id,
+        serviceId: service.id,
+        startAt,
+      });
+      expect(created.statusCode).toBe(201);
+      ids.push(created.json().id);
+    }
+
+    const moves = await Promise.all(
+      ids.map((id) =>
+        owner.post(`/api/app/calendar/appointments/${id}/reschedule`, {
+          startAt: '2026-10-05T16:00:00.000Z',
+        }),
+      ),
+    );
+
+    expect(moves.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    expect(
+      await systemDb.appointment.count({
+        where: { startAt: new Date('2026-10-05T16:00:00.000Z') },
+      }),
+    ).toBe(1);
+  });
+
+  it('reativar um cancelado não pode ocupar horário já tomado por outra pessoa', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const { service, contact, owner } = await setup();
+    const body = {
+      contactId: contact.id,
+      serviceId: service.id,
+      startAt: '2026-10-05T12:00:00.000Z',
+    };
+
+    const first = (await owner.post('/api/app/calendar/appointments', body)).json();
+    await owner.post(`/api/app/calendar/appointments/${first.id}/status`, { status: 'CANCELLED' });
+    expect((await owner.post('/api/app/calendar/appointments', body)).statusCode).toBe(201);
+
+    const reactivated = await owner.post(`/api/app/calendar/appointments/${first.id}/status`, {
+      status: 'CONFIRMED',
+    });
+    expect(reactivated.statusCode).toBe(409);
+    expect(await systemDb.appointment.count({ where: { status: 'CONFIRMED' } })).toBe(1);
+
+    // Mudança entre estados ativos, ou para encerrado, não passa pela checagem.
+    const completed = await owner.post(`/api/app/calendar/appointments/${first.id}/status`, {
+      status: 'NO_SHOW',
+    });
+    expect(completed.statusCode).toBe(200);
+  });
+
+  it('encaixe manual (enforceAvailability=false) continua permitindo sobreposição', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const { service, contact, owner } = await setup();
+    const body = {
+      contactId: contact.id,
+      serviceId: service.id,
+      startAt: '2026-10-05T12:00:00.000Z',
+    };
+
+    expect((await owner.post('/api/app/calendar/appointments', body)).statusCode).toBe(201);
+    const forced = await owner.post('/api/app/calendar/appointments', {
+      ...body,
+      enforceAvailability: false,
+    });
+    expect(forced.statusCode).toBe(201);
+  });
+
   it('agenda pelo agente: a tool usa o contato da conversa e exige confirmação explícita', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));

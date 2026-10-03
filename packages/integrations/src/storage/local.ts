@@ -23,7 +23,7 @@ export class LocalObjectStorage implements ObjectStorageProvider {
     await fs.writeFile(target, data);
   }
 
-  get(key: string): Promise<Buffer> {
+  async get(key: string): Promise<Buffer> {
     return fs.readFile(this.resolve(key));
   }
 

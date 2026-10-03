@@ -15,6 +15,7 @@ import {
   PLATFORM_ROLES,
 } from '@botsaas/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { whatsappPriceTable } from '@botsaas/whatsapp';
 import { z } from 'zod';
 import type { Actor } from '../../context';
 import { auditPlatform } from '../../lib/audit';
@@ -24,6 +25,7 @@ import { periodStart } from '../../lib/time';
 import { platform, requireAuthContext } from '../../plugins/guards';
 import { applyBusinessTemplate } from '../company/templates/service';
 import { USAGE_METRICS } from '../usage/limits';
+import { resolveRange, usageBreakdown } from '../usage/breakdown';
 import { costByCompany, summarizeAiUsageByPeriod } from '../usage/report';
 import {
   assertCompanyExists,
@@ -402,6 +404,31 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
         periods: await summarizeAiUsageByPeriod({ timezone, includeTests: true }),
         byCompany: await costByCompany(periodStart(request.query.period, timezone)),
       };
+    },
+  );
+
+  /** Consumo da IA por dia, cliente e modelo num período (datas de São Paulo, inclusivas). */
+  app.get(
+    '/usage/breakdown',
+    {
+      preValidation: platform('platform:usage:read'),
+      schema: {
+        querystring: z.object({
+          from: z.string().optional(),
+          to: z.string().optional(),
+          companyId: z.uuid().optional(),
+        }),
+      },
+    },
+    async (request) => {
+      const timezone = 'America/Sao_Paulo';
+      return usageBreakdown({
+        ...resolveRange(request.query, timezone),
+        timezone,
+        companyId: request.query.companyId,
+        includeCompanies: true,
+        whatsappPrices: whatsappPriceTable(container.env.WHATSAPP_PRICE_USD),
+      });
     },
   );
 

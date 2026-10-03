@@ -1,5 +1,5 @@
 import type { Env } from '@botsaas/config';
-import { AnthropicProvider, MockAIProvider, type AIProvider } from '@botsaas/ai';
+import { AnthropicProvider, MetaModelProvider, MockAIProvider, type AIProvider } from '@botsaas/ai';
 import {
   DisabledSpeechToText,
   LocalObjectStorage,
@@ -28,14 +28,21 @@ function missing(provider: string, variable: string): never {
 export function createProviders(env: Env, logger: Logger): Providers {
   // `validateEnvRules` já recusa estes casos; aqui eles falham em vez de degradar em silêncio
   // caso um env chegue sem a validação cruzada.
-  const ai: AIProvider =
-    env.AI_PROVIDER === 'anthropic'
-      ? new AnthropicProvider({
-          apiKey: env.ANTHROPIC_API_KEY ?? missing('AI_PROVIDER=anthropic', 'ANTHROPIC_API_KEY'),
-          timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
-          refusalFallback: env.AI_REFUSAL_FALLBACK,
-        })
-      : new MockAIProvider();
+  let ai: AIProvider = new MockAIProvider();
+  if (env.AI_PROVIDER === 'anthropic') {
+    ai = new AnthropicProvider({
+      apiKey: env.ANTHROPIC_API_KEY ?? missing('AI_PROVIDER=anthropic', 'ANTHROPIC_API_KEY'),
+      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+      refusalFallback: env.AI_REFUSAL_FALLBACK,
+    });
+  }
+  if (env.AI_PROVIDER === 'meta') {
+    ai = new MetaModelProvider({
+      apiKey: env.META_MODEL_API_KEY ?? missing('AI_PROVIDER=meta', 'META_MODEL_API_KEY'),
+      baseURL: env.META_MODEL_API_BASE_URL,
+      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+    });
+  }
 
   const messaging: MessagingProvider =
     env.WHATSAPP_PROVIDER === 'cloud'

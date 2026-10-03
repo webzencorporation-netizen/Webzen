@@ -90,37 +90,38 @@ function mapStopReason(reason: string | null): AIStopReason {
   }
 }
 
-function mapError(error: unknown): AIProviderError {
+/** Traduz erros do SDK (formato Messages API) para `AIProviderError`, nomeando o fornecedor. */
+export function mapProviderError(error: unknown, vendor = 'Anthropic'): AIProviderError {
   if (
     error instanceof Anthropic.AuthenticationError ||
     error instanceof Anthropic.PermissionDeniedError
   ) {
-    return new AIProviderError('Credencial da Anthropic inválida ou sem permissão.', {
+    return new AIProviderError(`Credencial da ${vendor} inválida ou sem permissão.`, {
       cause: error,
       retryable: false,
     });
   }
   if (error instanceof Anthropic.RateLimitError) {
-    return new AIProviderError('Limite de requisições da Anthropic atingido.', {
+    return new AIProviderError(`Limite de requisições da ${vendor} atingido.`, {
       cause: error,
       retryable: true,
     });
   }
   if (error instanceof Anthropic.BadRequestError || error instanceof Anthropic.NotFoundError) {
-    return new AIProviderError(`Requisição rejeitada pela Anthropic: ${error.message}`, {
+    return new AIProviderError(`Requisição rejeitada pela ${vendor}: ${error.message}`, {
       cause: error,
       retryable: false,
     });
   }
   if (error instanceof Anthropic.APIConnectionError) {
-    return new AIProviderError('Falha de conexão com a Anthropic.', {
+    return new AIProviderError(`Falha de conexão com a ${vendor}.`, {
       cause: error,
       retryable: true,
     });
   }
   if (error instanceof Anthropic.APIError) {
     const status = error.status ?? 0;
-    return new AIProviderError(`Erro da Anthropic (${status}).`, {
+    return new AIProviderError(`Erro da ${vendor} (${status}).`, {
       cause: error,
       retryable: status >= 500 || status === 429,
     });
@@ -177,7 +178,7 @@ function toRefusal(
   };
 }
 
-function toAIResponse(response: Anthropic.Message | Anthropic.Beta.BetaMessage): AIResponse {
+export function toAIResponse(response: Anthropic.Message | Anthropic.Beta.BetaMessage): AIResponse {
   const toolCalls: AIToolCall[] = [];
   const texts: string[] = [];
   for (const block of response.content) {
@@ -247,7 +248,7 @@ export class AnthropicProvider implements AIProvider {
             })
           : await this.client.messages.create(params);
     } catch (error) {
-      throw mapError(error);
+      throw mapProviderError(error);
     }
     return toAIResponse(response);
   }

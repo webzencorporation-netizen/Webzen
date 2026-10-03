@@ -233,3 +233,84 @@ Preservar `enabled`, o comportamento de `ONBOARDING` e o teste manual explícito
 - `S3_ENDPOINT` definido implica `requestChecksumCalculation`/`responseChecksumValidation` = `WHEN_REQUIRED`; AWS S3 mantém as proteções padrão.
 
 **Limites:** a reconexão continua manual pelo painel. O job de espelhamento falha enquanto a integração estiver em `ERROR` e não reexecuta sozinho após reconectar. A homologação real de Google e S3 continua pendente de credenciais.
+
+## D-028 — Meta Model API (Muse Spark) como provider próprio sobre o formato Messages
+
+**Contexto:** em 2026-09-29 o responsável não conseguiu adicionar créditos na Anthropic (a verificação de identidade falhou) e optou pela IA oficial da Meta. A antiga Llama API foi desativada em julho/2026; a oferta atual é a [Meta Model API](https://dev.meta.ai/docs/overview), com modelos Muse Spark e endpoints compatíveis com os SDKs da OpenAI e da Anthropic. Sondagens na API real com `muse-spark-1.3` confirmaram: Messages API em `https://api.meta.ai` com texto, imagens, tools (inclusive paralelas) e `tool_result` com `is_error`; autenticação Bearer (`x-api-key` é recusado em `/v1/models`); raciocínio obrigatório (`thinking: disabled` → 400) contado em `max_tokens`/`output_tokens`; `output_config.effort` `low`/`medium`/`high`; `tool_choice` só `auto`; `max_tokens` ≥ 16; blocos `redacted_thinking`; cache automático.
+
+**Decisão:**
+
+- `AI_PROVIDER=meta` cria `MetaModelProvider` (`packages/ai/src/provider/meta.ts`). Ele reaproveita do adapter Anthropic a tradução de mensagens, respostas e erros (`toAnthropicMessages`, `toAIResponse`, `mapProviderError` com o nome do fornecedor), mas é um provider separado que não envia `fallbacks`/beta nem `cache_control`. O comportamento do `AnthropicProvider` não muda.
+- O cliente do SDK usa `apiKey: null` + `authToken`, para nunca ler nem enviar `ANTHROPIC_API_KEY` do ambiente à Meta (coberto por teste).
+- Sempre envia `effort` (padrão `medium`) e soma uma folga de raciocínio a `maxOutputTokens` (2.048/4.096/8.192 por nível). Sem isso, o padrão de 1.024 tokens por empresa cortaria respostas, porque o raciocínio (300–700 tokens medidos) não pode ser desligado.
+- O catálogo e o modelo efetivo passam a respeitar o provedor ativo: prefixo `claude-` → anthropic, `muse-` → meta (`aiProviderForModel` em `@botsaas/config`). O env recusa `AI_DEFAULT_MODEL`/`AI_SUMMARY_MODEL` de outro provedor. Modelo de empresa incompatível cai no padrão sem apagar a escolha salva.
+- Preço inicial `muse-spark-1.3`: US$ 1,25/M entrada, 0,15/M cache lido, 4,25/M saída (raciocínio incluso). Escrita de cache usa o preço de entrada, pois a Meta não a cobra à parte.
+- `pnpm homolog:meta` repete as sondagens (e avisa quando a Meta passar a aceitar algo hoje recusado); testes de contrato cobrem 400/401/403/404/429/5xx e conexão.
+
+**Limites:** o prompt foi escrito para Claude; qualidade de atendimento do Muse Spark depende dos cenários da Etapa 2 em `docs/AI_AGENT.md`. Latência observada de 15–18 s por turno com ferramentas (raciocínio `medium`); `low` reduz latência e custo. A folga amplia o teto de saída por chamada: `maxOutputTokens` deixa de ser um limite estrito do texto visível com esse provider. O streaming funciona no SDK, mas não é usado pelo atendimento. Não houve homologação com WhatsApp Cloud real (sem número conectado); o fluxo foi validado pelo simulador, que usa a mesma ingestão do webhook.
+
+## D-029 — Agenda: "verificar e gravar" serializado por empresa com advisory lock
+
+**Contexto:** em 2026-09-29, ao avaliar um pedido de evolução da plataforma, apareceu uma corrida na agenda. `createAppointment`, `rescheduleAppointment` e a reativação em `updateAppointmentStatus` liam os horários ocupados e só depois gravavam, sem transação nem trava. Um teste com 5 pedidos simultâneos para o mesmo horário reservou 4. Duas remarcações simultâneas para o mesmo horário passaram. Reativar um cancelado (→ `CONFIRMED`) não checava se o horário já tinha sido tomado.
+
+**Decisão:**
+
+- A checagem de agendamentos e a gravação rodam numa transação que começa com `pg_advisory_xact_lock(20260929, hashtext(companyId))`, no mesmo padrão do bootstrap do owner (D-019). O lock é por empresa, então uma empresa não bloqueia outra, e é liberado no commit/rollback.
+- A consulta ao calendário externo (Google, rede) acontece **antes** da transação. Assim ela não segura o lock nem estoura o timeout da transação interativa. A corrida que o lock resolve é entre gravações no nosso banco.
+- Não foi usada uma exclusion constraint (`btree_gist`) porque o painel permite **encaixe manual** (`enforceAvailability: false`), que é uma sobreposição intencional. Uma constraint impediria esse encaixe. O encaixe continua fora da checagem e é coberto por teste.
+- A reativação (encerrado → ativo) passa pela mesma checagem. Mudanças entre estados ativos, ou para estados encerrados, não passam.
+
+**Limites:** gravações que não passam por essas três funções não pegam o lock (hoje não há outras). O lock serializa as reservas por empresa, o que só pesa com volume muito alto de reservas simultâneas da mesma empresa. Remarcar um horário para perto do original ainda pode esbarrar no evento espelhado do próprio agendamento no Google, comportamento anterior a esta mudança.
+
+## D-030 — Sessão do Postgres sempre em UTC
+
+**Contexto:** em 2026-09-29, um teste do relatório de consumo por dia falhou: um registro das 23:30 de São Paulo caía no dia seguinte. A causa: o `@prisma/adapter-pg` envia `Date` **sem fuso**, e o Postgres local (embedded) herda o fuso da máquina (`America/Santiago`). Um `2026-09-10T02:30Z` gravado pelo app era guardado como `05:30Z`. O Prisma desfazia o deslocamento na leitura, então o app parecia correto. Mas valores gerados pelo banco (`now()`, `@default(now())`) ficavam certos e os gravados pelo app ficavam deslocados, e todo SQL com datas (agrupar por dia, `AT TIME ZONE`) errava. Servidores em UTC, o padrão dos Postgres gerenciados, não manifestam o problema.
+
+**Decisão:** `createPrismaClient` abre toda sessão com `options: '-c TimeZone=UTC'`. O teste `apps/api/test/db-timezone.test.ts` configura o banco de teste fora de UTC (`ALTER DATABASE … SET timezone`) para reproduzir o problema em qualquer ambiente, inclusive no CI.
+
+**Limites:** dados já gravados por esta aplicação num Postgres local fora de UTC continuam deslocados (horários do app aparecem adiantados pelo offset do servidor). É só dado de desenvolvimento: reseede ou recrie o banco local. Produção em UTC não é afetada. Conexões `pg` diretas (hoje só o setup E2E, sem datas) não passam por esse ajuste.
+
+## D-031 — Relatório de consumo da IA por dia, cliente e modelo
+
+**Contexto:** o custo por chamada já era registrado (`UsageRecord`), mas só havia totais por período e o custo total por empresa. Para a WebZen cobrar e acompanhar cada cliente faltavam o recorte por dia, modelo e provedor, um intervalo livre e a qualidade (erros e latência).
+
+**Decisão:** `GET /api/platform/usage/breakdown` (`platform:usage:read`, fuso de São Paulo, filtro opcional `companyId`) e `GET /api/app/metrics/usage/breakdown` (`usage:read`, fuso da empresa, só a própria empresa). Os dois recebem `from`/`to` (AAAA-MM-DD, inclusivos, padrão = mês corrente, máximo 366 dias) e devolvem `totals`, `byDay`, `byModel` (com provedor) e, na plataforma, `byCompany`. Custo e tokens vêm de `UsageRecord` (`AI_CALL`, sem testes). Execuções, falhas e latência média vêm de `AgentRun` (`SUCCEEDED`/`FAILED`, sem `TEST_CHAT`). Não houve migração nem tabela de agregados: a agregação é feita em SQL com `AT TIME ZONE`, e o filtro de empresa é explícito porque o SQL cru não passa pela extensão de tenant.
+
+**Limites:** o recorte por dia usa o instante de início da execução. Custos desconhecidos seguem o [plano de custos](docs/COST_ACCOUNTING_PLAN.md). Ainda não há exportação CSV nem tela no painel (os endpoints estão prontos). Tabela de agregados só se o volume exigir.
+
+## D-032 — Recuperação automática de respostas travadas
+
+**Contexto:** D-018 registrava que um `agent.reply` perdido ou esgotado deixava a mensagem do cliente sem resposta até alguém intervir, porque não havia reconciliador. As falhas da IA em si já estavam cobertas: na última tentativa, o runner aplica o fallback, notifica e marca as entradas. O que ficava sem resposta era o **trabalho perdido**: worker que caiu, Redis fora no enqueue, webhook que esgotou tentativas.
+
+**Decisão:** job periódico `agent.recover-stalled` (a cada 5 min, via `upsertJobScheduler`, sem duplicar entre réplicas). Ele procura conversas `WHATSAPP` em modo `AI`, não fechadas, de empresas não suspensas/canceladas e com IA ativa, que tenham mensagem do cliente sem `agentHandledAt` há mais de 10 min e menos de 6 h. Para essas, reagenda `agent.reply` (deduplicação por conversa; o runner relê o banco, então repetir é idempotente). Se houver execução `RUNNING` com menos de 5 min, espera. Se já houve **3 execuções concluídas** desde a mensagem pendente mais antiga e ela segue sem tratamento, a falha é persistente e pode estar cobrando IA a cada ciclo. Nesse caso a conversa vai para humano via `requestHandoff`, com nota, notificação e evento, e sai dos próximos ciclos.
+
+**Limites:** mensagens de **saída** com falha não são reenviadas automaticamente, porque a Meta pode tê-las aceitado (D-020); isso segue manual (INCIDENTS). Entradas com mais de 6 h ficam para intervenção humana. O lote é de 500 mensagens por ciclo (com log de aviso ao atingir). Registros parciais anteriores a D-018 continuam sem backfill.
+
+## D-033 — Custo do WhatsApp gravado por mensagem e somado ao relatório
+
+**Contexto:** a partir de 2026-10-01 a Meta cobra cada mensagem de serviço (inclusive as respostas da IA) ao preço de utility/authentication do mercado. O parser já lia `pricing` dos status, mas o dado era descartado, e os relatórios só contavam a IA. A página oficial não traz a tabela que vale em 2026-10-01, que é publicada à parte. O único valor oficial disponível é o exemplo para o Brasil: 0,68 ¢ (tabela de 2026-07-01).
+
+**Decisão:**
+
+- `Message` ganha `billable`, `pricingCategory` e `pricingModel` (colunas opcionais, migração só de adição) e o índice `(billable, createdAt)` para a visão da plataforma. `applyStatusUpdate` grava a cobrança no **primeiro** status que a traz, inclusive quando o status é ignorado por chegar fora de ordem, e não a sobrescreve depois.
+- Preço: referência em `packages/whatsapp/src/pricing.ts` (service/utility/authentication = US$ 0,0068) mais `WHATSAPP_PRICE_USD` (JSON por categoria, validado no env), que prevalece. **Categoria sem preço não recebe valor inventado**: é contada como `whatsappUnpricedMessages` e sai com `costUsd: null` em `whatsappByCategory`.
+- O relatório de consumo (D-031) inclui `whatsappMessages`, `whatsappCostUsd` e `whatsappUnpricedMessages` nos totais, por dia e por cliente, além de `whatsappByCategory`. O WhatsApp não entra em `byModel`, porque não é modelo de IA.
+
+**Limites:** um único mercado (Brasil). Destinatários de outros países são valorados pela mesma tabela. Mensagens enviadas antes desta mudança não têm cobrança gravada. O dia de referência é o de criação da mensagem. O custo é estimativa: reconcilie com a fatura do WhatsApp Manager.
+
+## D-034 — Auditoria de segurança: proxy confiável, limites por conta e custo, redação de logs e inventário de endpoints
+
+**Contexto:** a auditoria de 2026-09-30 mapeou as 155 rotas, a autenticação, a autorização, o isolamento entre empresas, os webhooks, as chamadas externas, o SQL cru, os uploads, a IA e as dependências. A base se mostrou sólida: nenhuma rota sem guard, todos os modelos com `companyId` sob a extensão de tenant, SQL cru parametrizado e filtrado por empresa, Argon2id, sessões opacas com hash, webhook HMAC em tempo constante, OAuth com state assinado, nenhuma URL de usuário em chamadas de rede, histórico git sem segredos. Foram confirmados por teste: `trustProxy: true` (IP forjável via `X-Forwarded-For`, burlando os limites por IP, inclusive do login); login limitado só por IP; o "Testar agente" chamando a IA paga sem limite próprio nem orçamento; redação de logs só um nível abaixo do topo; painel sem CSP/HSTS; login mantendo a sessão anterior do navegador; 3 alertas de dependência no CLI do Prisma; `LocalObjectStorage.get` lançando de forma síncrona.
+
+**Decisão:**
+
+- `TRUST_PROXY` (vazio = nenhum proxy; saltos ou IPs/CIDRs), com `true` recusado na validação do env.
+- Limite de login **por conta** (`LOGIN_ACCOUNT_MAX_ATTEMPTS`/15 min, via `createRateLimit` no mesmo armazenamento do rate limit, Redis quando houver), contando toda tentativa para não revelar cadastros; e-mail normalizado antes da validação.
+- "Testar agente": limite por empresa (`AI_TEST_RATE_LIMIT_PER_MINUTE`) e a mesma `checkAiAllowance` do atendimento (planos e orçamentos).
+- Redação de logs recursiva em `formatters.log` (qualquer campo com nome sensível, até 8 níveis, incluindo erros); caminhos com curinga em vários níveis no `redact` do Pino custavam ~100x por linha (3 → 366 µs) e foram descartados; a função própria custa ~5 µs.
+- CSP (sem nonce, conforme o guia da versão instalada do Next) e HSTS no painel em produção.
+- Login descarta a sessão anterior do navegador.
+- Inventário de endpoints (`plugins/route-inventory.ts`) com metadados dos guards e teste de política sobre todas as rotas.
+- `pnpm check:secrets` (CI e hook local de pré-commit) e `pnpm audit --audit-level high` no CI; `overrides` para `deepmerge-ts` 8 e `mysql2` 3.23.1 (transitivas do CLI do Prisma), validados com `prisma validate/generate/migrate status`.
+
+**Limites:** sem MFA (recomendado para administradores da plataforma; não improvisado). Sem fluxo de "esqueci a senha" (redefinição pela administração). `customerConfirmed` nas ferramentas de agenda continua sendo informado pelo modelo. Sessões duram 14 dias sem expiração por inatividade. A aplicação usa o papel dono do banco (Neon/local); um papel restrito só com DML é recomendado em produção. CSP usa `'unsafe-inline'` (exigido pelo Next sem nonce). `pnpm audit` no CI pode falhar quando surgir um alerta novo — é intencional, para que ele seja tratado.

@@ -46,8 +46,21 @@ describe('createProviders', () => {
     expect(providers.speechToText.name).toBe('openai-compatible');
   });
 
+  it('Meta Model API vira um provider próprio, separado do da Anthropic', () => {
+    const providers = createProviders(
+      env({
+        AI_PROVIDER: 'meta',
+        META_MODEL_API_KEY: 'placeholder-not-real',
+        AI_DEFAULT_MODEL: 'muse-spark-1.3',
+      }),
+      logger,
+    );
+    expect(providers.ai.name).toBe('meta');
+  });
+
   it.each([
     [{ AI_PROVIDER: 'anthropic' }, /ANTHROPIC_API_KEY/],
+    [{ AI_PROVIDER: 'meta' }, /META_MODEL_API_KEY/],
     [{ STORAGE_PROVIDER: 's3' }, /S3_BUCKET/],
     [{ STT_PROVIDER: 'openai-compatible', STT_API_KEY: 'x' }, /STT_API_URL/],
   ])('provider real incompleto falha em vez de cair na simulação: %o', (values, message) => {

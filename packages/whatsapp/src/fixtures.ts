@@ -50,6 +50,7 @@ export function buildStatusWebhook(input: {
   recipientId: string;
   errorCode?: number;
   errorTitle?: string;
+  pricing?: { billable: boolean; category: string; pricing_model?: string; type?: string };
 }) {
   return {
     object: 'whatsapp_business_account',
@@ -74,6 +75,7 @@ export function buildStatusWebhook(input: {
                   ...(input.errorCode
                     ? { errors: [{ code: input.errorCode, title: input.errorTitle ?? 'Error' }] }
                     : {}),
+                  ...(input.pricing ? { pricing: input.pricing } : {}),
                 },
               ],
             },

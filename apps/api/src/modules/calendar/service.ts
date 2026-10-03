@@ -13,7 +13,7 @@ import {
   type WeeklySchedule,
 } from '@botsaas/shared';
 import { addMinutes } from 'date-fns';
-import type { CompanyScope } from '../../context';
+import type { CompanyDataScope, CompanyScope } from '../../context';
 import { audit } from '../../lib/audit';
 import { getOwnCompany } from '../../lib/company-record';
 import { emitDomainEvent } from '../../lib/events';
@@ -92,10 +92,9 @@ export async function getCalendarProvider(
   return { provider, integrationId: integration.id };
 }
 
-async function busyIntervals(
-  scope: CompanyScope,
+async function appointmentBusy(
+  scope: CompanyDataScope,
   range: Interval,
-  timezone: string,
   excludeId?: string,
 ): Promise<Interval[]> {
   const appointments = await scope.db.appointment.findMany({
@@ -107,13 +106,54 @@ async function busyIntervals(
     },
     select: { startAt: true, endAt: true },
   });
-  const busy: Interval[] = appointments.map((item) => ({ start: item.startAt, end: item.endAt }));
+  return appointments.map((item) => ({ start: item.startAt, end: item.endAt }));
+}
+
+/** Compromissos do calendário externo também bloqueiam a agenda (inclui eventos espelhados por nós). */
+async function externalBusy(
+  scope: CompanyScope,
+  range: Interval,
+  timezone: string,
+): Promise<Interval[]> {
   const external = await getCalendarProvider(scope);
-  if (external) {
-    // Compromissos do calendário externo também bloqueiam a agenda (inclui eventos espelhados por nós).
-    busy.push(...(await external.provider.getAvailability({ ...range, timezone })));
+  return external ? external.provider.getAvailability({ ...range, timezone }) : [];
+}
+
+async function busyIntervals(
+  scope: CompanyScope,
+  range: Interval,
+  timezone: string,
+  excludeId?: string,
+): Promise<Interval[]> {
+  return [
+    ...(await appointmentBusy(scope, range, excludeId)),
+    ...(await externalBusy(scope, range, timezone)),
+  ];
+}
+
+/** Namespace fixo do advisory lock da agenda; a segunda chave é o hash da empresa. */
+const SCHEDULE_LOCK_NAMESPACE = 20260929;
+
+/**
+ * Serializa "verificar horário livre → gravar" por empresa. Sem isso, pedidos simultâneos
+ * (painel, agente e automações) liam a agenda antes de qualquer gravação e reservavam o mesmo
+ * horário. O lock é liberado no commit/rollback; a consulta ao calendário externo (rede) fica
+ * fora da transação para não segurá-lo.
+ */
+async function withScheduleLock<T>(
+  scope: CompanyScope,
+  fn: (locked: CompanyDataScope) => Promise<T>,
+): Promise<T> {
+  return scope.db.$transaction(async (db) => {
+    await db.$queryRaw`SELECT pg_advisory_xact_lock(${SCHEDULE_LOCK_NAMESPACE}::int, hashtext(${scope.companyId}))::text`;
+    return fn({ ...scope, db });
+  });
+}
+
+function assertIntervalFree(busy: Interval[], interval: Interval) {
+  if (busy.some((item) => item.start < interval.end && interval.start < item.end)) {
+    throw new ConflictError('Horário indisponível. Escolha outro horário.');
   }
-  return busy;
 }
 
 async function serviceDuration(
@@ -159,18 +199,6 @@ export async function getAvailableSlots(
   return { timezone: company.timezone, durationMinutes: duration, slots };
 }
 
-async function assertSlotFree(
-  scope: CompanyScope,
-  interval: Interval,
-  timezone: string,
-  excludeId?: string,
-) {
-  const busy = await busyIntervals(scope, interval, timezone, excludeId);
-  if (busy.some((item) => item.start < interval.end && interval.start < item.end)) {
-    throw new ConflictError('Horário indisponível. Escolha outro horário.');
-  }
-}
-
 export async function listAppointments(
   scope: CompanyScope,
   query: { from: Date; to: Date; status?: AppointmentStatus; contactId?: string },
@@ -208,23 +236,29 @@ export async function createAppointment(scope: CompanyScope, input: CreateAppoin
   const endAt = input.endAt ?? addMinutes(input.startAt, duration);
   if (endAt <= input.startAt)
     throw new ValidationError('Horário final deve ser depois do inicial.');
-  if (input.enforceAvailability !== false)
-    await assertSlotFree(scope, { start: input.startAt, end: endAt }, company.timezone);
+  const interval = { start: input.startAt, end: endAt };
+  // Encaixe manual (enforceAvailability=false) é permitido de propósito pelo painel.
+  const enforce = input.enforceAvailability !== false;
+  const external = enforce ? await externalBusy(scope, interval, company.timezone) : [];
 
-  const appointment = await scope.db.appointment.create({
-    data: {
-      companyId: scope.companyId,
-      contactId: contact.id,
-      serviceId,
-      startAt: input.startAt,
-      endAt,
-      timezone: company.timezone,
-      status: input.status ?? 'CONFIRMED',
-      notes: input.notes ?? null,
-      createdByType: scope.actor.type === 'PLATFORM_ADMIN' ? 'USER' : scope.actor.type,
-      createdById: scope.actor.userId ?? null,
-    },
-    include: appointmentInclude,
+  const appointment = await withScheduleLock(scope, async (locked) => {
+    if (enforce)
+      assertIntervalFree([...(await appointmentBusy(locked, interval)), ...external], interval);
+    return locked.db.appointment.create({
+      data: {
+        companyId: scope.companyId,
+        contactId: contact.id,
+        serviceId,
+        startAt: input.startAt,
+        endAt,
+        timezone: company.timezone,
+        status: input.status ?? 'CONFIRMED',
+        notes: input.notes ?? null,
+        createdByType: scope.actor.type === 'PLATFORM_ADMIN' ? 'USER' : scope.actor.type,
+        createdById: scope.actor.userId ?? null,
+      },
+      include: appointmentInclude,
+    });
   });
   await enqueueCalendarSync(scope, appointment.id, 'create');
   await emitDomainEvent(scope, 'appointment.created', {
@@ -241,11 +275,18 @@ export async function rescheduleAppointment(scope: CompanyScope, id: string, sta
     throw new NotFoundError('Agendamento não encontrado ou já encerrado.');
   const duration = current.endAt.getTime() - current.startAt.getTime();
   const endAt = new Date(startAt.getTime() + duration);
-  await assertSlotFree(scope, { start: startAt, end: endAt }, current.timezone, current.id);
-  const appointment = await scope.db.appointment.update({
-    where: { id },
-    data: { startAt, endAt, reminderSentAt: null },
-    include: appointmentInclude,
+  const interval = { start: startAt, end: endAt };
+  const external = await externalBusy(scope, interval, current.timezone);
+  const appointment = await withScheduleLock(scope, async (locked) => {
+    assertIntervalFree(
+      [...(await appointmentBusy(locked, interval, current.id)), ...external],
+      interval,
+    );
+    return locked.db.appointment.update({
+      where: { id },
+      data: { startAt, endAt, reminderSentAt: null },
+      include: appointmentInclude,
+    });
   });
   await enqueueCalendarSync(scope, id, 'update');
   await audit(scope, {
@@ -282,12 +323,21 @@ export async function updateAppointmentStatus(
   status: AppointmentStatus,
 ) {
   if (status === 'CANCELLED') return cancelAppointment(scope, id);
-  const exists = await scope.db.appointment.findUnique({ where: { id }, select: { id: true } });
-  if (!exists) throw new NotFoundError('Agendamento não encontrado.');
-  return scope.db.appointment.update({
-    where: { id },
-    data: { status },
-    include: appointmentInclude,
+  const current = await scope.db.appointment.findUnique({ where: { id } });
+  if (!current) throw new NotFoundError('Agendamento não encontrado.');
+  const update = (db: CompanyDataScope['db']) =>
+    db.appointment.update({ where: { id }, data: { status }, include: appointmentInclude });
+  // Só reativar (encerrado → ativo) volta a ocupar a agenda; o horário pode ter sido tomado.
+  if (!ACTIVE_STATUSES.includes(status) || ACTIVE_STATUSES.includes(current.status))
+    return update(scope.db);
+  const interval = { start: current.startAt, end: current.endAt };
+  const external = await externalBusy(scope, interval, current.timezone);
+  return withScheduleLock(scope, async (locked) => {
+    assertIntervalFree(
+      [...(await appointmentBusy(locked, interval, current.id)), ...external],
+      interval,
+    );
+    return update(locked.db);
   });
 }
 
