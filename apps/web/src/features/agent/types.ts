@@ -40,5 +40,5 @@ export interface AiSettings {
   }[];
   models: { id: string; name: string }[];
   defaultModel: string;
-  provider: 'anthropic' | 'meta' | 'mock';
+  provider: 'anthropic' | 'meta' | 'gemini' | 'mock';
 }

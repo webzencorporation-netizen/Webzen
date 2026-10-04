@@ -169,10 +169,27 @@ describe('configuração de ambiente', () => {
 
     expect(() => parseEnv({ ...meta, META_MODEL_API_KEY: '' })).toThrow(/META_MODEL_API_KEY/);
     expect(() => parseEnv({ ...meta, AI_DEFAULT_MODEL: 'claude-opus-5' })).toThrow(
-      /AI_DEFAULT_MODEL=claude-opus-5 pertence a outro provedor.*muse-spark-1\.3/,
+      /AI_DEFAULT_MODEL=claude-opus-5 pertence a outro provedor.*muse-spark-1\.2/,
     );
     expect(() => parseEnv({ ...meta, AI_SUMMARY_MODEL: 'claude-haiku-4-5' })).toThrow(
       /AI_SUMMARY_MODEL/,
+    );
+  });
+
+  it('Gemini: exige a chave e um modelo gemini-*, sem vazar a chave no resumo', () => {
+    const gemini = {
+      ...production,
+      AI_PROVIDER: 'gemini',
+      ANTHROPIC_API_KEY: '',
+      GEMINI_API_KEY: 'fixture-gemini-key',
+      AI_DEFAULT_MODEL: 'gemini-2.5-flash',
+    };
+    const env = parseEnv(gemini);
+    expect(env.GEMINI_API_BASE_URL).toBe('https://generativelanguage.googleapis.com');
+    expect(JSON.stringify(describeProviders(env))).not.toContain('fixture-');
+    expect(() => parseEnv({ ...gemini, GEMINI_API_KEY: '' })).toThrow(/GEMINI_API_KEY/);
+    expect(() => parseEnv({ ...gemini, AI_DEFAULT_MODEL: 'muse-spark-1.2' })).toThrow(
+      /AI_DEFAULT_MODEL=muse-spark-1.2 pertence a outro provedor.*gemini-2\.5-flash/,
     );
   });
 
@@ -283,6 +300,8 @@ describe('.env.example', () => {
     for (const secret of [
       'ANTHROPIC_API_KEY',
       'META_MODEL_API_KEY',
+      'GEMINI_API_KEY',
+      'BREVO_API_KEY',
       'STRIPE_SECRET_KEY',
       'STRIPE_WEBHOOK_SECRET',
       'SMTP_PASSWORD',
