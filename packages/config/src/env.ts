@@ -67,6 +67,13 @@ export const envSchema = z.object({
   /** Google Gemini (aistudio.google.com/apikey); tem plano gratuito. */
   GEMINI_API_KEY: optionalString,
   GEMINI_API_BASE_URL: z.url().default('https://generativelanguage.googleapis.com'),
+  /** Modelos tentados quando o principal está sem cota (429) ou com alta demanda (503). */
+  GEMINI_FALLBACK_MODELS: optionalString.transform((value) =>
+    (value ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ),
   META_MODEL_API_BASE_URL: z.url().default('https://api.meta.ai'),
   AI_DEFAULT_MODEL: z.string().min(1).default('claude-opus-5'),
   AI_SUMMARY_MODEL: optionalString,
