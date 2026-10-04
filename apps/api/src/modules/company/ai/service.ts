@@ -33,7 +33,7 @@ export async function getAiSettings(scope: CompanyScope) {
     requireConfig(scope),
     scope.db.aIToolConfiguration.findMany(),
     getOwnCompany(scope),
-    listAvailableModels(scope.container.env.AI_PROVIDER),
+    listAvailableModels(scope.container.env.AI_PROVIDER, scope.container.env.AI_DEFAULT_MODEL),
   ]);
   const template = getBusinessTemplate(company.templateKey);
   return {
@@ -98,7 +98,7 @@ export type AiConfigInput = Partial<
 export async function updateAiConfig(scope: CompanyScope, input: AiConfigInput) {
   const current = await requireConfig(scope);
   if (input.model) {
-    const models = await listAvailableModels(scope.container.env.AI_PROVIDER);
+    const models = await listAvailableModels(scope.container.env.AI_PROVIDER, scope.container.env.AI_DEFAULT_MODEL);
     if (!models.some((model) => model.id === input.model))
       throw new ValidationError('Modelo não disponível.');
   }

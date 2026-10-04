@@ -1,16 +1,28 @@
 import { isModelCompatible, type AIProviderName, type Env } from '@botsaas/config';
 import { systemDb } from '@botsaas/database';
 
-/** Modelos disponíveis para escolha no painel: tabela de preços ativa, só do provedor ativo. */
-export async function listAvailableModels(provider: AIProviderName) {
+/**
+ * Modelos disponíveis para escolha no painel: tabela de preços ativa, só do provedor ativo,
+ * mais o modelo padrão da plataforma — que pode não ter preço cadastrado (ex.: Gemini no
+ * plano gratuito). Sem ele, salvar as configurações da IA falhava com "Modelo não disponível".
+ */
+export async function listAvailableModels(provider: AIProviderName, defaultModel?: string) {
   const rows = await systemDb.modelPricing.findMany({
     where: { isActive: true },
     orderBy: { model: 'asc' },
     select: { model: true, displayName: true },
   });
-  return rows
+  const models = rows
     .filter((row) => isModelCompatible(provider, row.model))
     .map((row) => ({ id: row.model, name: row.displayName ?? row.model }));
+  if (
+    defaultModel &&
+    isModelCompatible(provider, defaultModel) &&
+    !models.some((model) => model.id === defaultModel)
+  ) {
+    models.unshift({ id: defaultModel, name: defaultModel });
+  }
+  return models;
 }
 
 /**
