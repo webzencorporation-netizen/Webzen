@@ -61,9 +61,12 @@ export const envSchema = z.object({
   }),
 
   // IA
-  AI_PROVIDER: z.enum(['anthropic', 'meta', 'mock']).default('mock'),
+  AI_PROVIDER: z.enum(['anthropic', 'meta', 'gemini', 'mock']).default('mock'),
   ANTHROPIC_API_KEY: optionalString,
   META_MODEL_API_KEY: optionalString,
+  /** Google Gemini (aistudio.google.com/apikey); tem plano gratuito. */
+  GEMINI_API_KEY: optionalString,
+  GEMINI_API_BASE_URL: z.url().default('https://generativelanguage.googleapis.com'),
   META_MODEL_API_BASE_URL: z.url().default('https://api.meta.ai'),
   AI_DEFAULT_MODEL: z.string().min(1).default('claude-opus-5'),
   AI_SUMMARY_MODEL: optionalString,
@@ -169,6 +172,7 @@ export type AIProviderName = Env['AI_PROVIDER'];
 export function aiProviderForModel(model: string): Exclude<AIProviderName, 'mock'> | null {
   if (model.startsWith('claude-')) return 'anthropic';
   if (model.startsWith('muse-')) return 'meta';
+  if (model.startsWith('gemini-')) return 'gemini';
   return null;
 }
 
@@ -237,6 +241,9 @@ export function validateEnvRules(env: Env): string[] {
   if (env.AI_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
     issues.push('ANTHROPIC_API_KEY é obrigatória quando AI_PROVIDER=anthropic.');
   }
+  if (env.AI_PROVIDER === 'gemini' && !env.GEMINI_API_KEY) {
+    issues.push('GEMINI_API_KEY é obrigatória quando AI_PROVIDER=gemini.');
+  }
   if (env.AI_PROVIDER === 'meta' && !env.META_MODEL_API_KEY) {
     issues.push('META_MODEL_API_KEY é obrigatória quando AI_PROVIDER=meta.');
   }
@@ -247,7 +254,11 @@ export function validateEnvRules(env: Env): string[] {
     if (model && !isModelCompatible(env.AI_PROVIDER, model)) {
       issues.push(
         `${variable}=${model} pertence a outro provedor; com AI_PROVIDER=${env.AI_PROVIDER} use um modelo desse provedor` +
-          (env.AI_PROVIDER === 'meta' ? ' (ex.: muse-spark-1.3).' : '.'),
+          (env.AI_PROVIDER === 'meta'
+            ? ' (ex.: muse-spark-1.2).'
+            : env.AI_PROVIDER === 'gemini'
+              ? ' (ex.: gemini-2.5-flash).'
+              : '.'),
       );
     }
   }

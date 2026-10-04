@@ -12,6 +12,13 @@ export {
   metaMaxTokens,
   type MetaModelProviderConfig,
 } from './provider/meta';
+export {
+  GEMINI_API_BASE_URL,
+  GEMINI_REASONING_HEADROOM,
+  GeminiProvider,
+  toGeminiContents,
+  type GeminiProviderConfig,
+} from './provider/gemini';
 export { MockAIProvider, type MockScriptStep } from './provider/mock';
 export * from './tools/types';
 export * from './tools/catalog';
