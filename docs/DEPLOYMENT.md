@@ -99,6 +99,8 @@ Projeto Railway `webzen`, ambiente `production`, todos os serviços a partir do 
 - Migrações continuam manuais e só depois do merge (`pnpm db:migrate:deploy` contra o Neon).
 - `TRUST_PROXY=fd00::/8,10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16` (redes internas da Railway). Sem isso, todo acesso pelo painel chegava com o IP interno do serviço `web` (`fd12:…`) e todos os clientes dividiam o mesmo limite de login/requisições. Verificado: painel e acesso direto resolvem o IP real; IP forjado em `X-Forwarded-For` é ignorado.
 - WhatsApp: webhook do app da Meta em `…/webhooks/whatsapp` (campo `messages`). O app que gera o token precisa estar inscrito na WABA (`POST /<WABA>/subscribed_apps`); configurar o webhook no app não faz isso sozinho — sem a inscrição, a Meta não entrega nenhuma mensagem (aconteceu em 2026-10-03: a WABA estava inscrita em outro app).
+- IA em produção: **Google Gemini** (`AI_PROVIDER=gemini`, `AI_DEFAULT_MODEL=gemini-3.8-flash`, plano gratuito). A Meta Model API recusa 100% das chamadas vindas da Railway (404 "Model not found or access denied", testado de Amsterdã e de Virginia com `curl` puro), embora a mesma chave funcione do Brasil; a Anthropic está sem créditos. No plano gratuito do Gemini a resposta leva de 5 a 80 s e há limites diários.
+- Região: todos os serviços em `us-east4-eqdc4a` (Virginia). A Railway criou o projeto em Amsterdã, longe do Neon (São Paulo).
 - Pendente: token permanente do WhatsApp (usuário do sistema no Business Manager; o token de teste expira em 24 h), domínio próprio.
 
 ## Backups
