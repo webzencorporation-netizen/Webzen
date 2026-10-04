@@ -1,5 +1,11 @@
 import type { Env } from '@botsaas/config';
-import { AnthropicProvider, MetaModelProvider, MockAIProvider, type AIProvider } from '@botsaas/ai';
+import {
+  AnthropicProvider,
+  GeminiProvider,
+  MetaModelProvider,
+  MockAIProvider,
+  type AIProvider,
+} from '@botsaas/ai';
 import {
   DisabledSpeechToText,
   LocalObjectStorage,
@@ -44,6 +50,13 @@ export function createProviders(env: Env, logger: Logger): Providers {
       apiKey: env.ANTHROPIC_API_KEY ?? missing('AI_PROVIDER=anthropic', 'ANTHROPIC_API_KEY'),
       timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
       refusalFallback: env.AI_REFUSAL_FALLBACK,
+    });
+  }
+  if (env.AI_PROVIDER === 'gemini') {
+    ai = new GeminiProvider({
+      apiKey: env.GEMINI_API_KEY ?? missing('AI_PROVIDER=gemini', 'GEMINI_API_KEY'),
+      baseURL: env.GEMINI_API_BASE_URL,
+      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
     });
   }
   if (env.AI_PROVIDER === 'meta') {
