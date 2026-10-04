@@ -56,6 +56,7 @@ export function createProviders(env: Env, logger: Logger): Providers {
     ai = new GeminiProvider({
       apiKey: env.GEMINI_API_KEY ?? missing('AI_PROVIDER=gemini', 'GEMINI_API_KEY'),
       baseURL: env.GEMINI_API_BASE_URL,
+      fallbackModels: env.GEMINI_FALLBACK_MODELS,
       timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
     });
   }

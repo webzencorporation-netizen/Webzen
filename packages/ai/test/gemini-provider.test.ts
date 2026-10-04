@@ -196,6 +196,83 @@ describe('GeminiProvider', () => {
     expect((failure as Error).message).not.toContain(KEY);
   });
 
+  it('cota ou alta demanda: segue para o próximo modelo e registra as tentativas', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl
+      .mockResolvedValueOnce(Response.json({ error: { message: 'quota' } }, { status: 429 }))
+      .mockResolvedValueOnce(Response.json({ error: { message: 'high demand' } }, { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          candidates: [{ content: { parts: [{ text: 'Oi!' }] }, finishReason: 'STOP' }],
+          modelVersion: 'gemini-3.1-flash-lite',
+        }),
+      );
+    const provider = new GeminiProvider({
+      apiKey: KEY,
+      fetchImpl,
+      fallbackModels: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'],
+    });
+    const result = await provider.complete(request({ model: 'gemini-3.8-flash' }));
+    expect(fetchImpl.mock.calls.map(([url]) => String(url).match(/models\/(.+):/)?.[1])).toEqual([
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+    ]);
+    expect(result.text).toBe('Oi!');
+    expect(result.model).toBe('gemini-3.1-flash-lite');
+    expect(result.attempts.map((attempt) => [attempt.model, attempt.served, attempt.fallback])).toEqual([
+      ['gemini-3.8-flash', false, false],
+      ['gemini-3.5-flash', false, true],
+      ['gemini-3.1-flash-lite', true, true],
+    ]);
+  });
+
+  it('todos os modelos saturados: erro retryable; outros erros não trocam de modelo', async () => {
+    const quota = () => Response.json({ error: { message: 'quota' } }, { status: 429 });
+    const saturated = vi.fn<typeof fetch>().mockImplementation(async () => quota());
+    const failure = await new GeminiProvider({ apiKey: KEY, fetchImpl: saturated, fallbackModels: ['b'] })
+      .complete(request({ model: 'a' }))
+      .catch((error: unknown) => error);
+    expect((failure as AIProviderError).retryable).toBe(true);
+    expect(saturated).toHaveBeenCalledTimes(2);
+
+    const invalid = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ error: { message: 'bad' } }, { status: 400 }));
+    await new GeminiProvider({ apiKey: KEY, fetchImpl: invalid, fallbackModels: ['b'] })
+      .complete(request({ model: 'a' }))
+      .catch(() => undefined);
+    expect(invalid).toHaveBeenCalledTimes(1);
+  });
+
+  it('conteúdo de outro modelo: troca a assinatura de raciocínio pelo marcador e tira o pensamento', async () => {
+    const { fetchImpl, provider } = setup(
+      { body: toolCallReply },
+      { body: { candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] } },
+    );
+    const first = await provider.complete(request({ model: 'gemini-3.5-flash' }));
+    await provider.complete(
+      request({
+        model: 'gemini-3.8-flash',
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'Qual o horário?' }] },
+          { role: 'assistant', raw: first.rawAssistantContent },
+          {
+            role: 'user',
+            content: [{ type: 'tool_result', toolUseId: first.toolCalls[0]!.id, content: '{}' }],
+          },
+        ],
+      }),
+    );
+    const contents = sentBody(fetchImpl, 1).contents as { parts: Record<string, unknown>[] }[];
+    expect(contents[1]!.parts).toEqual([
+      {
+        functionCall: { id: 'call_1_get_business_hours', name: 'get_business_hours', args: {} },
+        thoughtSignature: 'skip_thought_signature_validator',
+      },
+    ]);
+  });
+
   it('falha de rede é retryable', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed'));
     const failure = await new GeminiProvider({ apiKey: KEY, fetchImpl })

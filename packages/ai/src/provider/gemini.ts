@@ -1,4 +1,5 @@
 import { AIProviderError } from '@botsaas/shared';
+import { emptyUsage } from './types';
 import type {
   AIMessage,
   AIProvider,
@@ -18,16 +19,24 @@ import type {
  * - tools em `functionDeclarations` com `parametersJsonSchema` (JSON Schema completo);
  * - o conteúdo do modelo (inclusive `thoughtSignature` do raciocínio) volta intacto na
  *   iteração seguinte do loop de tools, guardado em `rawAssistantContent`;
- * - o raciocínio conta em `maxOutputTokens`: somamos uma folga, como na Meta.
+ * - o raciocínio conta em `maxOutputTokens`: somamos uma folga, como na Meta;
+ * - a cota gratuita é por modelo (5 req/min em out/2026): com 429 ou 503 ("alta demanda")
+ *   a chamada segue para o próximo modelo de `fallbackModels`. Ao reenviar conteúdo de
+ *   outro modelo, as assinaturas de raciocínio viram o marcador documentado pelo Google
+ *   para pular a validação (a assinatura só vale para o modelo que a gerou).
  */
 
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com';
 export const GEMINI_REASONING_HEADROOM = 2048;
+/** Valor documentado pelo Google para reenviar chamadas cuja assinatura não vale no modelo atual. */
+export const GEMINI_SKIP_SIGNATURE = 'skip_thought_signature_validator';
 
 export interface GeminiProviderConfig {
   apiKey: string;
   baseURL?: string;
   timeoutMs?: number;
+  /** Modelos tentados, em ordem, quando o pedido recebe 429 (cota) ou 503 (alta demanda). */
+  fallbackModels?: string[];
   fetchImpl?: typeof fetch;
 }
 
@@ -55,6 +64,8 @@ interface GeminiContent {
 interface GeminiRaw {
   content: GeminiContent;
   calls: { id: string; name: string }[];
+  /** Modelo que gerou o conteúdo (as assinaturas de raciocínio só valem nele). */
+  model?: string;
 }
 
 interface GeminiResponse {
@@ -97,7 +108,19 @@ function toResponseObject(content: string, isError: boolean | undefined): Record
 }
 
 /** Converte o histórico do agente para `contents`, juntando turnos seguidos do mesmo papel. */
-export function toGeminiContents(messages: AIMessage[]): GeminiContent[] {
+function forModel(raw: GeminiRaw, model: string | undefined): GeminiContent {
+  if (!model || !raw.model || raw.model === model) return raw.content;
+  return {
+    role: raw.content.role,
+    parts: raw.content.parts
+      .filter((part) => !part.thought)
+      .map((part) =>
+        part.thoughtSignature ? { ...part, thoughtSignature: GEMINI_SKIP_SIGNATURE } : part,
+      ),
+  };
+}
+
+export function toGeminiContents(messages: AIMessage[], model?: string): GeminiContent[] {
   const names = new Map<string, string>();
   const contents: GeminiContent[] = [];
   const push = (content: GeminiContent) => {
@@ -115,7 +138,7 @@ export function toGeminiContents(messages: AIMessage[]): GeminiContent[] {
           });
         }
         for (const call of message.raw.calls) names.set(call.id, call.name);
-        push(message.raw.content);
+        push(forModel(message.raw, model));
       } else if (message.content.trim()) {
         push({ role: 'model', parts: [{ text: message.content }] });
       }
@@ -175,16 +198,64 @@ function toUsage(metadata: GeminiResponse['usageMetadata']): AIUsage {
   };
 }
 
+class GeminiHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(`Erro do Gemini (${status}): ${detail}`);
+  }
+
+  toProviderError(): AIProviderError {
+    if (this.status === 401 || this.status === 403) {
+      return new AIProviderError(`Credencial do Gemini inválida ou sem permissão: ${this.detail}`, {
+        cause: this,
+        retryable: false,
+      });
+    }
+    return new AIProviderError(this.message, {
+      cause: this,
+      retryable: this.status === 429 || this.status >= 500,
+    });
+  }
+}
+
 export class GeminiProvider implements AIProvider {
   readonly name = 'gemini' as const;
 
   constructor(private readonly config: GeminiProviderConfig) {}
 
   async complete(request: AIRequest): Promise<AIResponse> {
+    const models = [
+      request.model,
+      ...(this.config.fallbackModels ?? []).filter((model) => model !== request.model),
+    ];
+    const attempts: AIResponse['attempts'] = [];
+    for (const [index, model] of models.entries()) {
+      try {
+        const response = await this.call(request, model);
+        const fallback = index > 0;
+        return {
+          ...response,
+          attempts: [...attempts, { model: response.model, served: true, fallback, usage: response.usage }],
+        };
+      } catch (error) {
+        const saturated =
+          error instanceof GeminiHttpError && (error.status === 429 || error.status === 503);
+        if (!saturated || index === models.length - 1) {
+          throw error instanceof GeminiHttpError ? error.toProviderError() : error;
+        }
+        attempts.push({ model, served: false, fallback: index > 0, usage: emptyUsage() });
+      }
+    }
+    throw new AIProviderError('Nenhum modelo do Gemini configurado.', { retryable: false });
+  }
+
+  private async call(request: AIRequest, model: string): Promise<AIResponse> {
     const system = request.system.map((block) => block.text).join('\n\n');
     const body = {
       ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-      contents: toGeminiContents(request.messages),
+      contents: toGeminiContents(request.messages, model),
       ...(request.tools.length > 0
         ? {
             tools: [
@@ -200,7 +271,7 @@ export class GeminiProvider implements AIProvider {
         : {}),
       generationConfig: { maxOutputTokens: request.maxOutputTokens + GEMINI_REASONING_HEADROOM },
     };
-    const url = `${this.config.baseURL ?? GEMINI_API_BASE_URL}/v1beta/models/${encodeURIComponent(request.model)}:generateContent`;
+    const url = `${this.config.baseURL ?? GEMINI_API_BASE_URL}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     let response: Response;
     try {
@@ -215,15 +286,7 @@ export class GeminiProvider implements AIProvider {
     }
     const payload = (await response.json().catch(() => null)) as GeminiResponse | null;
     if (!response.ok) {
-      const detail = payload?.error?.message ?? `HTTP ${response.status}`;
-      if (response.status === 401 || response.status === 403) {
-        throw new AIProviderError(`Credencial do Gemini inválida ou sem permissão: ${detail}`, {
-          retryable: false,
-        });
-      }
-      throw new AIProviderError(`Erro do Gemini (${response.status}): ${detail}`, {
-        retryable: response.status === 429 || response.status >= 500,
-      });
+      throw new GeminiHttpError(response.status, payload?.error?.message ?? `HTTP ${response.status}`);
     }
 
     const candidate = payload?.candidates?.[0];
@@ -245,16 +308,15 @@ export class GeminiProvider implements AIProvider {
     const usage = toUsage(payload?.usageMetadata);
     const blocked = payload?.promptFeedback?.blockReason;
     const stopReason = blocked ? 'refusal' : mapStopReason(candidate?.finishReason, toolCalls.length > 0);
-    const model = payload?.modelVersion ?? request.model;
-    const raw: GeminiRaw = { content: { role: 'model', parts }, calls };
+    const raw: GeminiRaw = { content: { role: 'model', parts }, calls, model };
 
     return {
-      model,
+      model: payload?.modelVersion ?? model,
       text,
       toolCalls,
       stopReason,
       usage,
-      attempts: [{ model, served: true, fallback: false, usage }],
+      attempts: [],
       ...(stopReason === 'refusal'
         ? {
             refusal: {

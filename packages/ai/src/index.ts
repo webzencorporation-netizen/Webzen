@@ -15,6 +15,7 @@ export {
 export {
   GEMINI_API_BASE_URL,
   GEMINI_REASONING_HEADROOM,
+  GEMINI_SKIP_SIGNATURE,
   GeminiProvider,
   toGeminiContents,
   type GeminiProviderConfig,
