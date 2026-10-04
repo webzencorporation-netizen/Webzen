@@ -21,6 +21,14 @@ describe('catálogo de modelos', () => {
     expect(anthropic).toContain('claude-opus-5');
     expect(anthropic).not.toContain('muse-spark-1.3');
 
+    // O padrão da plataforma aparece mesmo sem preço cadastrado (ex.: Gemini gratuito).
+    expect(await listAvailableModels('gemini', 'gemini-3.8-flash')).toEqual([
+      { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash' },
+    ]);
+    expect((await listAvailableModels('meta', 'claude-opus-5')).map((model) => model.id)).toEqual(
+      meta,
+    );
+
     const all = (await listAvailableModels('mock')).map((model) => model.id);
     expect(all).toEqual(expect.arrayContaining(['claude-opus-5', 'muse-spark-1.3']));
   });
